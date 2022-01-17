@@ -20,7 +20,7 @@
 #define FE 180 // false eastaning
 #define PI 3.14
 
-static const char *TRACK_FILE = "img/track.tga";
+static const char *TRACK_FILE = "img/track_4.tga";
 
 //----------------------------------------------------------------------------
 // ------------------------------GLOBALS------------------------------------
