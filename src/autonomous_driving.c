@@ -9,7 +9,7 @@
 #define WIN_Y 1024
 #define BITS_COL 24
 #define BKG 0
-#define WHITE 15
+//#define WHITE 15
 
 #define SIM_X 800
 #define SIM_Y 800
@@ -21,11 +21,12 @@
 #define PI 3.14
 
 static const char *TRACK_FILE = "img/track_4.tga";
-
+static const char *CAR_FILE = "img/orange_car.tga";
 //----------------------------------------------------------------------------
 // ------------------------------GLOBALS------------------------------------
 //----------------------------------------------------------------------------
 BITMAP *track;
+BITMAP *car;
 
 void init();
 void get_track_bbox(float *length, float *height);
@@ -56,7 +57,7 @@ void init() {
 
 
 	// organize app windows
-	int white = makecol(255, 255, 255);
+	//int white = makecol(255, 255, 255);
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
 
 	draw_track();
@@ -70,6 +71,12 @@ void draw_track() {
 		exit(1);
 	}
 
+	car = load_bitmap(CAR_FILE, NULL);
+	if (car == NULL) {
+		printf("ERROR: file not found\n");
+		exit(1);
+	}
+	draw_sprite(track, car, 500, 350);
 	blit(track, screen, 0, 0, 0, WIN_Y-SIM_Y, track->w, track->h);
 }
 
