@@ -60,7 +60,7 @@ void set_activation(int i)
 
 // suspends the pthread until the next activation time 
 // and updates the new absolute deadline and activation time
-void	wait_for_activation(int i) {
+void wait_for_activation(int i) {
 	clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &(param[i].activ_time), NULL); 
 	
 	time_add_ms(&(param[i].activ_time), param[i].period);

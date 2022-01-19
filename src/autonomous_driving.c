@@ -3,9 +3,13 @@
 #include <allegro.h>
 #include <math.h>
 
-//----------------------------------------------------------------------------
-// ------------------------------CONSTANTS------------------------------------
-//----------------------------------------------------------------------------
+#include "../libs/ptask/ptask.h"
+#include "../libs/tlib/tlib.h"
+/*-----------------------------------------------------------------------------*/
+/*								CONSTANTS									   */
+/*-----------------------------------------------------------------------------*/
+
+//-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
 #define WIN_Y 1024
 #define BITS_COL 24
@@ -27,11 +31,40 @@ static const char *CAR_FILE = "img/orange_car.tga";
 
 #define INIT_CAR_X 500
 #define INIT_CAR_Y 350
-//-------------------------------SENSOR---------------------------------------
+#define MAX_THETA 5
+#define MIN_THETA -5
+#define LF 3					// car length to front from centre of gravity
+#define LR 2					// car length to back from centre of gravity
+#define L LF+LR
+//-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
 #define STEP 1 // lidar resolution
 
-//-------------------------------CUSTOM STRUCTURES----------------------------
+//-------------------------------TASKS---------------------------------------
+#define MAX_TASKS 10
+// handles command interpreter
+#define COM_INTERP_ID 2
+#define COM_INTERP_PRIO 3
+#define COM_INTERP_PER 30	// ms
+#define COM_INTERP_DLR 30
+
+// handles agent state update 
+#define AGENT_ID 1
+#define AGENT_PRIO 1
+#define AGENT_PER 20	// ms
+#define AGENT_DLR 20
+// handles sensors reading
+
+// handles neural network
+
+// handles graphics 
+#define GRAPHICS_ID 0
+#define GRAPHICS_PRIO 2
+#define GRAPHICS_PER 30	// ms
+#define GRAPHICS_DLR 30
+/*-----------------------------------------------------------------------------*/
+/*								CUSTOM STRUCTURES							   */
+/*-----------------------------------------------------------------------------*/
 struct Lidar {
 	int x;
 	int y;
@@ -45,28 +78,39 @@ struct Car {
 	float v;
 	//float vx;
 	//float vy;
-	float a;
-	float theta;
+	//float a;
+	//float delta;						// steering angle
+	float theta;							// heading angle
 	struct Lidar left_lidar;
 	struct Lidar front_lidar;
 	struct Lidar right_lidar;
+};
+
+struct Controls {
+	float a;
+	int delta;						// steering angle
 };
 
 struct Agent {
 	struct Car car;
 	int alive; // 1 = alive, 0 = dead due to collision with track borders
 	float distance;	// distance raced on track 
+	struct Controls action;
+	// da aggiungere il reward
 };
 
-//----------------------------------------------------------------------------
-// ------------------------------GLOBAL VARIABLES-----------------------------
-//----------------------------------------------------------------------------
+/*-----------------------------------------------------------------------------*/
+/*								GLOBAL VARIABLES							   */
+/*-----------------------------------------------------------------------------*/
 BITMAP *track_bmp;
 BITMAP *car_bmp;
 BITMAP *scene_bmp;
 
 struct Agent agent;
-
+int end = 1;
+/*-----------------------------------------------------------------------------*/
+/*								FUNCTION PROTOTYPES							   */
+/*-----------------------------------------------------------------------------*/
 void init();
 void init_agent();
 void init_scene();
@@ -77,6 +121,10 @@ void draw_car();
 void draw_sensors();
 void update_scene();
 
+void update_car_model(struct Controls act);
+void update_sensors();
+void comms_task();
+void* display_task(void* arg);
 //--------------------------------UTILS---------------------------------------
 float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
@@ -85,8 +133,9 @@ int main() {
 	printf("Starting app...\n");
 
 	init();
-	
-	readkey();
+	printf("here app...\n");
+	wait_for_task(GRAPHICS_ID);
+	//readkey();
 	destroy_bitmap(track_bmp);
 	destroy_bitmap(scene_bmp);
 	allegro_exit();
@@ -97,8 +146,8 @@ int main() {
 void init() {
 	allegro_init();
 	install_keyboard();
-	install_mouse();
-	show_mouse(screen);
+	///install_mouse();
+	//show_mouse(screen);
 
 	set_color_depth(BITS_COL);
 	set_gfx_mode(GFX_AUTODETECT_WINDOWED, WIN_X, WIN_Y, 0, 0);
@@ -109,8 +158,12 @@ void init() {
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
 	init_scene();
 	init_agent();
-	//draw_sensors();
+	draw_sensors();
 	update_scene();
+
+	task_create(display_task, GRAPHICS_ID, GRAPHICS_PER, GRAPHICS_DLR, GRAPHICS_PRIO);
+	//task_create(comms_task, COM_INTERP_ID, COM_INTERP_PER, COM_INTERP_DLR, COM_INTERP_PRIO);
+//
 }
 
 void init_scene() {
@@ -121,7 +174,11 @@ void init_scene() {
 		exit(1);
 	}
 
-	scene_bmp = track_bmp;	// update scene bitmap to initial track state
+	scene_bmp = load_bitmap(TRACK_FILE, NULL);
+	if (scene_bmp == NULL) {
+		printf("ERROR: file not found\n");
+		exit(1);
+	}
 
 	car_bmp = load_bitmap(CAR_FILE, NULL);
 	if (car_bmp == NULL) {
@@ -133,18 +190,15 @@ void init_scene() {
 }
 
 void update_scene() {
+	draw_track();
+	draw_car();
 	draw_sensors();
+	printf("counter\n");
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
 
 void draw_track() {
 	//set_color_conversion(COLORCONV_32_TO_24);
-	track_bmp = load_bitmap(TRACK_FILE, NULL);
-
-	if (track_bmp == NULL) {
-		printf("ERROR: file not found\n");
-		exit(1);
-	}
 
 	blit(track_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, track_bmp->w, track_bmp->h);
 }
@@ -168,25 +222,46 @@ void draw_sensors() {
 	struct Lidar lidar;
 	col = makecol(255,255,255);
 
-
-
 	lidar = agent.car.left_lidar;
 	x = lidar.x + lidar.d*cos(lidar.alpha);
 	y = lidar.y - lidar.d*sin(lidar.alpha);
 	line(scene_bmp, lidar.x, lidar.y, x, y, col);
-	printf(" left_lidar: (%d,%d) \n", x, y);
+	//printf(" left_lidar: (%d,%d) \n", x, y);
 
 	lidar = agent.car.front_lidar;
 	x = lidar.x + lidar.d*cos(lidar.alpha);
 	y = lidar.y - lidar.d*sin(lidar.alpha);
 	line(scene_bmp, lidar.x, lidar.y, x, y, col);
-	printf(" front_lidar: (%d,%d) \n", x, y);
+	//printf(" front_lidar: (%d,%d) \n", x, y);
 
 	lidar = agent.car.right_lidar;
 	x = lidar.x + lidar.d*cos(lidar.alpha);
 	y = lidar.y - lidar.d*sin(lidar.alpha);
 	line(scene_bmp, lidar.x, lidar.y, x, y, col);
-	printf(" right_lidar: (%d,%d) \n", x, y);
+	//printf(" right_lidar: (%d,%d) \n", x, y);
+}
+
+void* display_task(void* arg) {
+	struct Controls action;
+	int i;
+	
+	i = get_task_index(arg);
+	set_activation(i);
+
+	while(!end) {
+		action.a = 0.0;
+		action.delta = 0;
+
+		update_car_model(action);
+		update_scene();
+
+		if(keypressed()) {
+			end = 0;
+		}
+		wait_for_activation(GRAPHICS_ID);
+	}
+
+	//return NULL;
 }
 
 float deg_to_rad(float deg_angle) {
@@ -205,8 +280,8 @@ void init_agent() {
 	vehicle.x = INIT_CAR_X;
 	vehicle.y = INIT_CAR_Y;
 	vehicle.theta = 0.0;
-	vehicle.v = 0.0;
-	vehicle.a = 0.0;
+	vehicle.v = 5.0;
+	//vehicle.a = 0.0;
 
 	vehicle.left_lidar.x = vehicle.x + car_bmp->w;
 	vehicle.left_lidar.y = (int)vehicle.y;
@@ -251,82 +326,26 @@ int read_sensor(int x0, int y0, float alpha) {
 
 	return d;
 }
-/*
-void get_track_bbox(float *length, float *height) {
-	float x_int = 0, y_int = 0, x_ext = 0, y_ext = 0;
-	float x_min = 0, x_max = 0, y_min = 0, y_max = 0;
-	int err = 0; // file closing error handler
-	FILE *reader;
-	char line[1024]; // array of chars to save each line of file
 
-	reader = fopen(TRACK_FILE, "r");
-	if (reader == NULL) {
-		printf("ERROR: could not access specified track file! \n");
-		exit(1);
-	}
+void update_car_model(struct Controls act) {
+	struct Car old_state, new_state;
+	float vx, vy;
+	float beta, r, omega;
 
-	// get min and max value of x and y in order to scale
-	// the coordinates to the area dedicated to the track on screen
-	while ( fgets(line, sizeof line, reader) != NULL) {
-		sscanf(line, "%f %f %f %f", &x_int, &y_int, &x_ext, &y_ext);
-		// internal bounds
-		x_min = (x_int < x_min) ? x_int : x_min;
-		x_max = (x_int > x_max) ? x_int : x_max;
-		y_min = (y_int < y_min) ? y_int : y_min;
-		y_max = (y_int > y_max) ? y_int : y_max;
-		// external bounds
-		x_min = (x_ext < x_min) ? x_ext : x_min;
-		x_max = (x_ext > x_max) ? x_ext : x_max;
-		y_min = (y_ext < y_min) ? y_ext : y_min;
-		y_max = (y_ext > y_max) ? y_ext : y_max;
+	old_state = agent.car;
 
-	}
+	beta = atan2(LR*tan(act.delta), L);
+	r = L/( (tan(act.delta)*cos(beta)) );
+	omega = old_state.v/r;
 
-	err = fclose(reader);
-	if (err == EOF) {
-		printf("ERROR: an error occured while trying to close the file! \n");
-		exit(1);
-	}
-
-	// compute bounding boxes
-	*length = (x_max - x_min)/2;
-	*height = (y_max - y_min)/2;
+	vx = old_state.v*cos(old_state.theta+beta);
+	vy = old_state.v*sin(old_state.theta+beta);
+	new_state.x = old_state.x + (vx*AGENT_PER);
+	new_state.y = old_state.y + (vy*AGENT_PER);
+	new_state.theta = old_state.theta + (omega*AGENT_PER);
+	new_state.v = old_state.v;
+	//new_state.a = old_state.a;
+	// assuming constant velocity 
+	// if acceleration is present, the velocity must be updated too
+	agent.car = new_state;
 }
-
-void tmp_track() {
-	float x_int = 0.0, y_int = 0.0, x_ext = 0.0, y_ext = 0.0;
-	float track_length = 0.0, track_height = 0.0;
-	int err = 0; // file closing error handler
-	FILE *reader;
-	char line[1024];
-
-	get_track_bbox(&track_length, &track_height);
-
-	reader = fopen(TRACK_FILE, "r");
-	if (reader == NULL) {
-		printf("ERROR: could not access specified track file! \n");
-		exit(1);
-	}
-
-	// read (x,y) coordinates of internal and external track boundaries
-	// the points format inside the txt file is 
-	// x_internal y_internal x_external y_external
-	while ( fgets(line, sizeof line, reader) != NULL) {
-		sscanf(line, "%f %f %f %f", &x_int, &y_int, &x_ext, &y_ext);
-		x_int += track_length/2;
-		y_int += track_height/2;
-		x_ext += track_length/2;
-		y_ext += track_height/2;
-		putpixel(screen, XCEN_SIM+x_int/SCALE, SIM_Y-YCEN_SIM-y_int/SCALE, WHITE);
-		putpixel(screen, XCEN_SIM+x_ext/SCALE, SIM_Y-YCEN_SIM-y_ext/SCALE, WHITE);
-
-	}
-
-	err = fclose(reader);
-	if (err == EOF) {
-		printf("ERROR: an error occured while trying to close the file! \n");
-		exit(1);
-	}
-
-}
-*/
