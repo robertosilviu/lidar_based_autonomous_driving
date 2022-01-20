@@ -23,7 +23,7 @@
 #define XCEN_SIM SIM_X/2
 #define YCEN_SIM SIM_Y/2
 #define SCALE 10
-#define T_SCALE 0.1
+#define T_SCALE 0.7
 #define PI 3.14
 
 static const char *TRACK_FILE = "img/track_4.tga";
@@ -189,6 +189,7 @@ void init_scene() {
 		printf("ERROR: file not found\n");
 		exit(1);
 	}
+	
 	draw_sprite(scene_bmp, car_bmp, INIT_CAR_X, INIT_CAR_Y);
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
@@ -214,7 +215,8 @@ void draw_car() {
 
 	theta_deg = rad_to_deg(agent.car.theta);
 	angle = 64 - theta_deg*(float)256/360;
-	rot = ftofix(angle);
+	//printf("angle is %f\n", angle);
+	rot = itofix(angle);
 	rotate_sprite(scene_bmp, car_bmp, agent.car.x, agent.car.y, rot);
 	//draw_sprite(scene_bmp, car_bmp, INIT_CAR_X, INIT_CAR_Y);
 }
@@ -284,7 +286,7 @@ void init_agent() {
 	vehicle.x = INIT_CAR_X;
 	vehicle.y = INIT_CAR_Y;
 	vehicle.theta = 0.0;
-	vehicle.v = 1.0;
+	vehicle.v = 300.0;
 	//vehicle.a = 0.0;
 
 	vehicle.left_lidar.x = vehicle.x + car_bmp->w;
@@ -337,7 +339,7 @@ void update_car_model(struct Controls act) {
 	float beta, r, omega;
 
 	//dt = T_SCALE * AGENT_PER;
-	dt = (float)AGENT_PER/1000;
+	dt = T_SCALE * (float)AGENT_PER/1000;
 	old_state = agent.car;
 
 	beta = atan2(LR*tan(act.delta), L);
@@ -349,6 +351,7 @@ void update_car_model(struct Controls act) {
 	new_state.x = old_state.x + (vx*dt);
 	new_state.y = old_state.y + (vy*dt);
 	new_state.theta = old_state.theta + (omega*dt);
+	//printf("new theta is %f \n", new_state.theta);
 	new_state.v = old_state.v;
 	//new_state.a = old_state.a;
 	// assuming constant velocity 
