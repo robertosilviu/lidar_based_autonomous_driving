@@ -9,6 +9,7 @@
 /*								CONSTANTS									   */
 /*-----------------------------------------------------------------------------*/
 
+#define LEN 50 // length of array of chars
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
 #define WIN_Y 1024
@@ -112,6 +113,7 @@ BITMAP *scene_bmp = NULL;
 
 struct Agent agent;
 int end = 0;
+char debug[LEN];
 /*-----------------------------------------------------------------------------*/
 /*								FUNCTION PROTOTYPES							   */
 /*-----------------------------------------------------------------------------*/
@@ -130,12 +132,15 @@ void update_sensors();
 void* comms_task(void* arg);
 void* display_task(void* arg);
 void* agent_task(void* arg);
-
+int crash_check();
+void reset_scene();
 //--------------------------------UTILS---------------------------------------
 float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
 char get_scancode();
 fixed deg_to_fixed(float deg);
+
+void write_debug();
 
 int main() {
 	int ret;
@@ -208,10 +213,20 @@ void init_scene() {
 }
 
 void update_scene() {
+	int crash_flag = 0;
+
 	draw_track();
 	draw_car();
 	draw_sensors();
 	//printf("inside update_scene\n");
+	// should be a for cycle for reach agent
+	crash_flag = crash_check();
+	if (crash_flag == 1) {
+		printf(" crash occured\n");
+		init_agent();
+		draw_track();
+		draw_car();
+	}
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
 
@@ -258,6 +273,41 @@ void draw_sensors() {
 	//printf(" right_lidar: (%d,%d) \n", x, y);
 }
 
+// checks if car has any collision with the track borders
+// if there are collisions return 1, otherwise returns 0
+int crash_check() {
+	int color, x, y;
+	int h, w;
+	
+	h = (int)car_bmp->w*0.4; // the real image is vertical so h and w are inverted
+	w = (int)car_bmp->h*0.4;
+	// upper left corner
+	x = (int)agent.car.x;
+	y = (int)agent.car.y;
+	color = getpixel(track_bmp,x,y);
+	printf(" y: %d, h: %d, col: %d\n", y, car_bmp->h, color);
+	if (color == BLACK)
+		return 1;
+	// upper right corner
+	x += w;
+	color = getpixel(track_bmp,x,y);
+	if (color == BLACK)
+		return 1;
+	// down right corner
+	y += h;
+	color = getpixel(track_bmp,x,y);
+	if (color == BLACK)
+		return 1;
+	// down left corner
+	x -= w;
+	color = getpixel(track_bmp,x,y);
+	if (color == BLACK)
+		return 1;
+
+	// no collision
+	return 0;
+}
+
 void* display_task(void* arg) {
 	struct Controls action;
 	int i;
@@ -271,6 +321,7 @@ void* display_task(void* arg) {
 
 		update_car_model(action);
 		update_scene();
+		write_debug();
 
 		if(keypressed()) {
 			end = 1;
@@ -293,30 +344,32 @@ void* comms_task(void* arg) {
 	act = agent.action;
 
 	do {
-		scan = get_scancode();
-		switch (scan) {
-			case KEY_UP:
-				act.a += 0.1;
-				if (act.a > MAX_A)
-					act.a = MAX_A;
-				break;
-			case KEY_DOWN:
-				act.a -= 0.1;
-				if (act.a < MIN_A)
-					act.a = MIN_A;
-				break;
-			case KEY_LEFT:
-				act.delta += 1.0;
-				if (act.delta > MAX_THETA)
-					act.delta = MAX_THETA;
-				break;
-			case KEY_RIGHT:
-				act.delta -= 1.0;
-				if (act.delta < MIN_THETA)
-					act.delta = MIN_THETA;
-				break;
-			default:
-				break;
+		if (keypressed()) {
+			scan = get_scancode();
+			switch (scan) {
+				case KEY_UP:
+					act.a += 0.1;
+					if (act.a > MAX_A)
+						act.a = MAX_A;
+					break;
+				case KEY_DOWN:
+					act.a -= 0.1;
+					if (act.a < MIN_A)
+						act.a = MIN_A;
+					break;
+				case KEY_LEFT:
+					act.delta += 1.0;
+					if (act.delta > MAX_THETA)
+						act.delta = MAX_THETA;
+					break;
+				case KEY_RIGHT:
+					act.delta -= 1.0;
+					if (act.delta < MIN_THETA)
+						act.delta = MIN_THETA;
+					break;
+				default:
+					break;
+			}
 		}
 		wait_for_activation(i);
 	} while (scan != KEY_ESC);
@@ -359,7 +412,7 @@ void init_agent() {
 	vehicle.x = INIT_CAR_X;
 	vehicle.y = INIT_CAR_Y;
 	vehicle.theta = 0.0;
-	vehicle.v = 0.0;
+	vehicle.v = 50.0;
 	//vehicle.a = 0.0;
 
 	vehicle.left_lidar.x = vehicle.x + car_bmp->w;
@@ -431,4 +484,30 @@ void update_car_model(struct Controls act) {
 	// assuming constant velocity 
 	// if acceleration is present, the velocity must be updated too
 	agent.car = new_state;
+}
+
+void write_debug() {
+	int white;
+	int y, y_max;
+
+	// refresh data on screen
+	y_max = 50;
+	for(y = 20; y <= y_max; y+=10) {
+		textout_ex(screen, font, debug, 10, y, BLACK, BLACK);
+	}
+
+	white = makecol(255,255,255);
+
+	sprintf(debug,"x: %f", agent.car.x);
+	textout_ex(screen, font, debug, 10, 20, white, -1);
+
+	sprintf(debug,"y: %f", agent.car.y);
+	textout_ex(screen, font, debug, 10, 30, white, -1);
+
+	sprintf(debug,"v: %f", agent.car.v);
+	textout_ex(screen, font, debug, 10, 40, white, -1);
+
+	sprintf(debug,"theta: %f", agent.car.theta);
+	textout_ex(screen, font, debug, 10, 50, white, -1);
+
 }
