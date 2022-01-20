@@ -26,7 +26,7 @@ pthread_t t_id[NT];	 				// pthread IDs (task)
 int 	task_create (void* (*task)(void *), int i, int period, int drel, int prio);
 void 	set_activation(int i);
 void	wait_for_activation(int i);
-void	wait_for_task(int i);
+int		wait_for_task(int i);
 int		deadline_miss(int i);
 int		get_task_index(void* arg);
 int		get_task_period(void* arg);

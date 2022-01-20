@@ -61,16 +61,18 @@ void set_activation(int i)
 // suspends the pthread until the next activation time 
 // and updates the new absolute deadline and activation time
 void wait_for_activation(int i) {
-	clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &(param[i].activ_time), NULL); 
-	
+	clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &(param[i].activ_time), NULL);
+	 
 	time_add_ms(&(param[i].activ_time), param[i].period);
 	time_add_ms(&(param[i].dead_time), param[i].period);
 }
 
 // waits for the thread specified by the ID to terminate
-void wait_for_task(int i) {
-	pthread_join(t_id[i], NULL);
-	return;
+int wait_for_task(int i) {
+	int ret;
+
+	ret = pthread_join(t_id[i], NULL);
+	return ret;
 }
 
 // Counter for deadline misses

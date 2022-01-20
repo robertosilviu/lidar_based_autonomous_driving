@@ -23,7 +23,7 @@
 #define XCEN_SIM SIM_X/2
 #define YCEN_SIM SIM_Y/2
 #define SCALE 10
-
+#define T_SCALE 0.1
 #define PI 3.14
 
 static const char *TRACK_FILE = "img/track_4.tga";
@@ -102,12 +102,12 @@ struct Agent {
 /*-----------------------------------------------------------------------------*/
 /*								GLOBAL VARIABLES							   */
 /*-----------------------------------------------------------------------------*/
-BITMAP *track_bmp;
-BITMAP *car_bmp;
-BITMAP *scene_bmp;
+BITMAP *track_bmp = NULL;
+BITMAP *car_bmp = NULL;
+BITMAP *scene_bmp = NULL;
 
 struct Agent agent;
-int end = 1;
+int end = 0;
 /*-----------------------------------------------------------------------------*/
 /*								FUNCTION PROTOTYPES							   */
 /*-----------------------------------------------------------------------------*/
@@ -130,11 +130,15 @@ float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
 
 int main() {
+	int ret;
 	printf("Starting app...\n");
 
 	init();
-	printf("here app...\n");
-	wait_for_task(GRAPHICS_ID);
+	//printf("here app...\n");
+	ret = wait_for_task(GRAPHICS_ID);
+	if(ret != 0) {
+		printf("ERROR: error while waiting for thread\n");
+	}
 	//readkey();
 	destroy_bitmap(track_bmp);
 	destroy_bitmap(scene_bmp);
@@ -159,7 +163,7 @@ void init() {
 	init_scene();
 	init_agent();
 	draw_sensors();
-	update_scene();
+	//update_scene();
 
 	task_create(display_task, GRAPHICS_ID, GRAPHICS_PER, GRAPHICS_DLR, GRAPHICS_PRIO);
 	//task_create(comms_task, COM_INTERP_ID, COM_INTERP_PER, COM_INTERP_DLR, COM_INTERP_PRIO);
@@ -193,14 +197,14 @@ void update_scene() {
 	draw_track();
 	draw_car();
 	draw_sensors();
-	printf("counter\n");
+	//printf("inside update_scene\n");
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
 
 void draw_track() {
 	//set_color_conversion(COLORCONV_32_TO_24);
 
-	blit(track_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, track_bmp->w, track_bmp->h);
+	blit(track_bmp, scene_bmp, 0, 0, 0, 0, track_bmp->w, track_bmp->h);
 }
 
 // rotate car sprite inside the scene using fixed points convention
@@ -256,12 +260,12 @@ void* display_task(void* arg) {
 		update_scene();
 
 		if(keypressed()) {
-			end = 0;
+			end = 1;
 		}
-		wait_for_activation(GRAPHICS_ID);
+		wait_for_activation(i);
 	}
 
-	//return NULL;
+	return NULL;
 }
 
 float deg_to_rad(float deg_angle) {
@@ -280,7 +284,7 @@ void init_agent() {
 	vehicle.x = INIT_CAR_X;
 	vehicle.y = INIT_CAR_Y;
 	vehicle.theta = 0.0;
-	vehicle.v = 5.0;
+	vehicle.v = 1.0;
 	//vehicle.a = 0.0;
 
 	vehicle.left_lidar.x = vehicle.x + car_bmp->w;
@@ -329,9 +333,11 @@ int read_sensor(int x0, int y0, float alpha) {
 
 void update_car_model(struct Controls act) {
 	struct Car old_state, new_state;
-	float vx, vy;
+	float vx, vy, dt;
 	float beta, r, omega;
 
+	//dt = T_SCALE * AGENT_PER;
+	dt = (float)AGENT_PER/1000;
 	old_state = agent.car;
 
 	beta = atan2(LR*tan(act.delta), L);
@@ -340,9 +346,9 @@ void update_car_model(struct Controls act) {
 
 	vx = old_state.v*cos(old_state.theta+beta);
 	vy = old_state.v*sin(old_state.theta+beta);
-	new_state.x = old_state.x + (vx*AGENT_PER);
-	new_state.y = old_state.y + (vy*AGENT_PER);
-	new_state.theta = old_state.theta + (omega*AGENT_PER);
+	new_state.x = old_state.x + (vx*dt);
+	new_state.y = old_state.y + (vy*dt);
+	new_state.theta = old_state.theta + (omega*dt);
 	new_state.v = old_state.v;
 	//new_state.a = old_state.a;
 	// assuming constant velocity 
