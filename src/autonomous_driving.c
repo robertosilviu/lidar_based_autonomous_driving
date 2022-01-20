@@ -36,6 +36,10 @@ static const char *CAR_FILE = "img/orange_car.tga";
 #define LF 3					// car length to front from centre of gravity
 #define LR 2					// car length to back from centre of gravity
 #define L LF+LR
+#define MAX_A 1.0
+#define MIN_A -1.0
+#define MAX_V 300.0
+#define MIN_V 0.0
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
 #define STEP 1 // lidar resolution
@@ -44,9 +48,9 @@ static const char *CAR_FILE = "img/orange_car.tga";
 #define MAX_TASKS 10
 // handles command interpreter
 #define COM_INTERP_ID 2
-#define COM_INTERP_PRIO 3
-#define COM_INTERP_PER 30	// ms
-#define COM_INTERP_DLR 30
+#define COM_INTERP_PRIO 10
+#define COM_INTERP_PER 40	// ms
+#define COM_INTERP_DLR 40
 
 // handles agent state update 
 #define AGENT_ID 1
@@ -59,9 +63,9 @@ static const char *CAR_FILE = "img/orange_car.tga";
 
 // handles graphics 
 #define GRAPHICS_ID 0
-#define GRAPHICS_PRIO 2
-#define GRAPHICS_PER 30	// ms
-#define GRAPHICS_DLR 30
+#define GRAPHICS_PRIO 30
+#define GRAPHICS_PER 20	// ms
+#define GRAPHICS_DLR 20
 /*-----------------------------------------------------------------------------*/
 /*								CUSTOM STRUCTURES							   */
 /*-----------------------------------------------------------------------------*/
@@ -123,11 +127,15 @@ void update_scene();
 
 void update_car_model(struct Controls act);
 void update_sensors();
-void comms_task();
+void* comms_task(void* arg);
 void* display_task(void* arg);
+void* agent_task(void* arg);
+
 //--------------------------------UTILS---------------------------------------
 float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
+char get_scancode();
+fixed deg_to_fixed(float deg);
 
 int main() {
 	int ret;
@@ -136,6 +144,7 @@ int main() {
 	init();
 	//printf("here app...\n");
 	ret = wait_for_task(GRAPHICS_ID);
+	ret = wait_for_task(COM_INTERP_ID);
 	if(ret != 0) {
 		printf("ERROR: error while waiting for thread\n");
 	}
@@ -166,11 +175,12 @@ void init() {
 	//update_scene();
 
 	task_create(display_task, GRAPHICS_ID, GRAPHICS_PER, GRAPHICS_DLR, GRAPHICS_PRIO);
-	//task_create(comms_task, COM_INTERP_ID, COM_INTERP_PER, COM_INTERP_DLR, COM_INTERP_PRIO);
+	task_create(comms_task, COM_INTERP_ID, COM_INTERP_PER, COM_INTERP_DLR, COM_INTERP_PRIO);
 //
 }
 
 void init_scene() {
+	fixed rot;
 	//set_color_conversion(COLORCONV_32_TO_24);
 	track_bmp = load_bitmap(TRACK_FILE, NULL);
 	if (track_bmp == NULL) {
@@ -190,7 +200,10 @@ void init_scene() {
 		exit(1);
 	}
 	
-	draw_sprite(scene_bmp, car_bmp, INIT_CAR_X, INIT_CAR_Y);
+	rot = deg_to_fixed(0.0);
+
+	rotate_sprite(scene_bmp, car_bmp, INIT_CAR_X, INIT_CAR_Y, rot);
+	//draw_sprite(scene_bmp, car_bmp, INIT_CAR_X, INIT_CAR_Y);
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
 
@@ -210,13 +223,11 @@ void draw_track() {
 
 // rotate car sprite inside the scene using fixed points convention
 void draw_car() {
-	float angle, theta_deg;
+	float theta_deg;
 	fixed rot; // allegro type to express fixed point number
 
 	theta_deg = rad_to_deg(agent.car.theta);
-	angle = 64 - theta_deg*(float)256/360;
-	//printf("angle is %f\n", angle);
-	rot = itofix(angle);
+	rot = deg_to_fixed(theta_deg);
 	rotate_sprite(scene_bmp, car_bmp, agent.car.x, agent.car.y, rot);
 	//draw_sprite(scene_bmp, car_bmp, INIT_CAR_X, INIT_CAR_Y);
 }
@@ -270,12 +281,74 @@ void* display_task(void* arg) {
 	return NULL;
 }
 
+void* comms_task(void* arg) {
+	int i;
+	char scan;
+	struct Controls act;
+
+	i = get_task_index(arg);
+	set_activation(i);
+
+	// semaphore
+	act = agent.action;
+
+	do {
+		scan = get_scancode();
+		switch (scan) {
+			case KEY_UP:
+				act.a += 0.1;
+				if (act.a > MAX_A)
+					act.a = MAX_A;
+				break;
+			case KEY_DOWN:
+				act.a -= 0.1;
+				if (act.a < MIN_A)
+					act.a = MIN_A;
+				break;
+			case KEY_LEFT:
+				act.delta += 1.0;
+				if (act.delta > MAX_THETA)
+					act.delta = MAX_THETA;
+				break;
+			case KEY_RIGHT:
+				act.delta -= 1.0;
+				if (act.delta < MIN_THETA)
+					act.delta = MIN_THETA;
+				break;
+			default:
+				break;
+		}
+		wait_for_activation(i);
+	} while (scan != KEY_ESC);
+
+	// semaphore
+	agent.action = act;
+	end = 1;
+
+	return NULL;
+}
+
 float deg_to_rad(float deg_angle) {
 	return deg_angle*PI/180;
 }
 
 float rad_to_deg(float rad_angle) {
 	return rad_angle*180/PI;
+}
+
+fixed deg_to_fixed(float deg) {
+	float angle = 0.0;
+
+	angle = 64 - deg*(float)256/360;
+	//printf("angle is %f\n", angle);
+	return ftofix(angle);
+}
+
+char get_scancode() {
+	if (keypressed())
+		return readkey() >> 8;
+	else
+		return 0;
 }
 
 void init_agent() {
@@ -286,7 +359,7 @@ void init_agent() {
 	vehicle.x = INIT_CAR_X;
 	vehicle.y = INIT_CAR_Y;
 	vehicle.theta = 0.0;
-	vehicle.v = 300.0;
+	vehicle.v = 0.0;
 	//vehicle.a = 0.0;
 
 	vehicle.left_lidar.x = vehicle.x + car_bmp->w;
@@ -352,7 +425,8 @@ void update_car_model(struct Controls act) {
 	new_state.y = old_state.y + (vy*dt);
 	new_state.theta = old_state.theta + (omega*dt);
 	//printf("new theta is %f \n", new_state.theta);
-	new_state.v = old_state.v;
+	new_state.v = old_state.v + act.a*dt; // to be checked
+	//new_state.v = old_state.v;
 	//new_state.a = old_state.a;
 	// assuming constant velocity 
 	// if acceleration is present, the velocity must be updated too
