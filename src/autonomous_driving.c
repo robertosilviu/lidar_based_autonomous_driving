@@ -23,12 +23,12 @@
 #define SIM_Y 800
 #define XCEN_SIM SIM_X/2
 #define YCEN_SIM SIM_Y/2
-#define SCALE 10
-#define T_SCALE 0.7
+#define SCALE 0.16 // 1px = 0.16m
+#define T_SCALE 0.4
 #define PI 3.14
 
 static const char *TRACK_FILE = "img/track_4.tga";
-static const char *CAR_FILE = "img/orange_car.tga";
+static const char *CAR_FILE = "img/small_car.tga";
 
 #define INIT_CAR_X 500
 #define INIT_CAR_Y 350
@@ -37,24 +37,25 @@ static const char *CAR_FILE = "img/orange_car.tga";
 #define LF 3					// car length to front from centre of gravity
 #define LR 2					// car length to back from centre of gravity
 #define L LF+LR
-#define MAX_A 1.0
-#define MIN_A -1.0
+#define G 9.8
+#define MAX_A 1.0*G
+#define MIN_A -1.0*G
 #define MAX_V 300.0
 #define MIN_V 0.0
 //-------------------------------SENSOR--------------------------------------
-#define SMAX 100 // lidar beam max distance
+#define SMAX 50 // lidar beam max distance
 #define STEP 1 // lidar resolution
 
 //-------------------------------TASKS---------------------------------------
 #define MAX_TASKS 10
 // handles command interpreter
-#define COM_INTERP_ID 2
+#define COM_INTERP_ID 1
 #define COM_INTERP_PRIO 10
 #define COM_INTERP_PER 40	// ms
 #define COM_INTERP_DLR 40
 
 // handles agent state update 
-#define AGENT_ID 1
+#define AGENT_ID 2
 #define AGENT_PRIO 1
 #define AGENT_PER 20	// ms
 #define AGENT_DLR 20
@@ -93,7 +94,7 @@ struct Car {
 
 struct Controls {
 	float a;
-	int delta;						// steering angle
+	float delta;						// steering angle
 };
 
 struct Agent {
@@ -113,7 +114,15 @@ BITMAP *scene_bmp = NULL;
 
 struct Agent agent;
 int end = 0;
+
 char debug[LEN];
+
+//---------------------------------------------------------------------------
+// GLOBAL SEMAPHORES
+//---------------------------------------------------------------------------
+pthread_mutex_t			mux_agent; // define 3 mutex
+
+pthread_mutexattr_t 	matt;			// define mutex attributes
 /*-----------------------------------------------------------------------------*/
 /*								FUNCTION PROTOTYPES							   */
 /*-----------------------------------------------------------------------------*/
@@ -127,7 +136,7 @@ void draw_car();
 void draw_sensors();
 void update_scene();
 
-void update_car_model(struct Controls act);
+void update_car_model();
 void update_sensors();
 void* comms_task(void* arg);
 void* display_task(void* arg);
@@ -170,6 +179,14 @@ void init() {
 	set_color_depth(BITS_COL);
 	set_gfx_mode(GFX_AUTODETECT_WINDOWED, WIN_X, WIN_Y, 0, 0);
 	clear_to_color(screen, BKG);
+
+	// MUTEX PROTOCOLS
+	pthread_mutexattr_init(&matt);
+	pthread_mutexattr_setprotocol(&matt, PTHREAD_PRIO_INHERIT);
+	// create 3 semaphores with Priority inheritance protocol
+	pthread_mutex_init(&mux_agent, &matt);
+
+	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
 	// organize app windows
 	//int white = makecol(255, 255, 255);
@@ -239,11 +256,16 @@ void draw_track() {
 // rotate car sprite inside the scene using fixed points convention
 void draw_car() {
 	float theta_deg;
+	int x, y;
 	fixed rot; // allegro type to express fixed point number
 
 	theta_deg = rad_to_deg(agent.car.theta);
 	rot = deg_to_fixed(theta_deg);
-	rotate_sprite(scene_bmp, car_bmp, agent.car.x, agent.car.y, rot);
+
+	x = INIT_CAR_X + agent.car.x/SCALE;
+	y = INIT_CAR_Y - agent.car.y/SCALE; 
+	//rotate_sprite(scene_bmp, car_bmp, agent.car.x/SCALE, agent.car.y/SCALE, rot);
+	rotate_sprite(scene_bmp, car_bmp, x, y, rot);
 	//draw_sprite(scene_bmp, car_bmp, INIT_CAR_X, INIT_CAR_Y);
 }
 
@@ -279,13 +301,12 @@ int crash_check() {
 	int color, x, y;
 	int h, w;
 	
-	h = (int)car_bmp->w*0.4; // the real image is vertical so h and w are inverted
-	w = (int)car_bmp->h*0.4;
+	h = (int)car_bmp->w; // the real image is vertical so h and w are inverted
+	w = (int)car_bmp->h;
 	// upper left corner
-	x = (int)agent.car.x;
-	y = (int)agent.car.y;
+	x = INIT_CAR_X + (int)agent.car.x;
+	y = INIT_CAR_Y + (int)agent.car.y;
 	color = getpixel(track_bmp,x,y);
-	printf(" y: %d, h: %d, col: %d\n", y, car_bmp->h, color);
 	if (color == BLACK)
 		return 1;
 	// upper right corner
@@ -316,16 +337,13 @@ void* display_task(void* arg) {
 	set_activation(i);
 
 	while(!end) {
-		action.a = 0.0;
-		action.delta = 0;
+		//action.a = 0.0;
+		//action.delta = 0;
 
-		update_car_model(action);
+		update_car_model();
 		update_scene();
-		write_debug();
+		//write_debug();
 
-		if(keypressed()) {
-			end = 1;
-		}
 		wait_for_activation(i);
 	}
 
@@ -334,48 +352,61 @@ void* display_task(void* arg) {
 
 void* comms_task(void* arg) {
 	int i;
+	float delta;
 	char scan;
 	struct Controls act;
+	struct Car car;
 
 	i = get_task_index(arg);
 	set_activation(i);
 
-	// semaphore
-	act = agent.action;
-
 	do {
 		if (keypressed()) {
+			pthread_mutex_lock(&mux_agent);
+			act = agent.action;
+			car = agent.car;
+			delta = rad_to_deg(act.delta);
 			scan = get_scancode();
 			switch (scan) {
 				case KEY_UP:
-					act.a += 0.1;
+					act.a += (0.1 * G);
 					if (act.a > MAX_A)
 						act.a = MAX_A;
+					//car.v += 1;
+					//if (car.v > MAX_V)
+					//	car.v = MAX_V;
 					break;
 				case KEY_DOWN:
-					act.a -= 0.1;
+					act.a -= (0.1 * G);
 					if (act.a < MIN_A)
 						act.a = MIN_A;
+					//car.v -= 1;
 					break;
 				case KEY_LEFT:
-					act.delta += 1.0;
-					if (act.delta > MAX_THETA)
-						act.delta = MAX_THETA;
+					delta += 1.0;
+					if (delta > MAX_THETA)
+						delta = MAX_THETA;
+					act.delta = deg_to_rad(delta);
 					break;
 				case KEY_RIGHT:
-					act.delta -= 1.0;
-					if (act.delta < MIN_THETA)
-						act.delta = MIN_THETA;
+					delta -= 1.0;
+					if (delta < MIN_THETA)
+						delta = MIN_THETA;
+					act.delta = deg_to_rad(delta);
 					break;
 				default:
 					break;
 			}
+
+			//printf("delta: %f, d_rad: %f\n", delta, act.delta);
+			agent.action = act;
+			//printf("a: %f, delta: %f \n", agent.action.a, agent.action.delta);
+			//agent.car = car;
+			pthread_mutex_unlock(&mux_agent);
 		}
 		wait_for_activation(i);
 	} while (scan != KEY_ESC);
 
-	// semaphore
-	agent.action = act;
 	end = 1;
 
 	return NULL;
@@ -409,30 +440,32 @@ void init_agent() {
 	
 	printf("Initializing agent...\n");
 
-	vehicle.x = INIT_CAR_X;
-	vehicle.y = INIT_CAR_Y;
+	//vehicle.x = INIT_CAR_X;
+	//vehicle.y = INIT_CAR_Y;
+	vehicle.x = 0;
+	vehicle.y = 0;
 	vehicle.theta = 0.0;
-	vehicle.v = 50.0;
+	vehicle.v = 0.0;
 	//vehicle.a = 0.0;
 
-	vehicle.left_lidar.x = vehicle.x + car_bmp->w;
-	vehicle.left_lidar.y = (int)vehicle.y;
+	vehicle.left_lidar.x = INIT_CAR_X + (int)vehicle.x + car_bmp->w;
+	vehicle.left_lidar.y = INIT_CAR_Y + (int)vehicle.y;
 	vehicle.left_lidar.alpha = deg_to_rad(45.0);
 	vehicle.left_lidar.d = read_sensor(
 							vehicle.left_lidar.x, 
 							vehicle.left_lidar.y, 
 							vehicle.theta + vehicle.left_lidar.alpha);
 
-	vehicle.front_lidar.x = vehicle.x + car_bmp->w;
-	vehicle.front_lidar.y = vehicle.y + (car_bmp->h/2);
+	vehicle.front_lidar.x = INIT_CAR_X + (int)vehicle.x + car_bmp->w;
+	vehicle.front_lidar.y = INIT_CAR_Y + vehicle.y + (car_bmp->h/2);
 	vehicle.front_lidar.alpha = 0.0;
 	vehicle.front_lidar.d = read_sensor(
 							vehicle.front_lidar.x, 
 							vehicle.front_lidar.y, 
 							vehicle.theta + vehicle.front_lidar.alpha);
 
-	vehicle.right_lidar.x = vehicle.x + car_bmp->w;
-	vehicle.right_lidar.y = vehicle.y + car_bmp->h;
+	vehicle.right_lidar.x = INIT_CAR_X + vehicle.x + car_bmp->w;
+	vehicle.right_lidar.y = INIT_CAR_Y + vehicle.y + car_bmp->h;
 	vehicle.right_lidar.alpha = deg_to_rad(-45.0);
 	vehicle.right_lidar.d = read_sensor(
 							vehicle.right_lidar.x, 
@@ -459,14 +492,18 @@ int read_sensor(int x0, int y0, float alpha) {
 	return d;
 }
 
-void update_car_model(struct Controls act) {
+void update_car_model() {
 	struct Car old_state, new_state;
+	struct Controls act;
 	float vx, vy, dt;
 	float beta, r, omega;
 
+	pthread_mutex_lock(&mux_agent);
 	//dt = T_SCALE * AGENT_PER;
 	dt = T_SCALE * (float)AGENT_PER/1000;
+	//dt = (float)AGENT_PER/1000;
 	old_state = agent.car;
+	act = agent.action;
 
 	beta = atan2(LR*tan(act.delta), L);
 	r = L/( (tan(act.delta)*cos(beta)) );
@@ -475,6 +512,7 @@ void update_car_model(struct Controls act) {
 	vx = old_state.v*cos(old_state.theta+beta);
 	vy = old_state.v*sin(old_state.theta+beta);
 	new_state.x = old_state.x + (vx*dt);
+	//printf("vx is: %f\n", vx*dt);
 	new_state.y = old_state.y + (vy*dt);
 	new_state.theta = old_state.theta + (omega*dt);
 	//printf("new theta is %f \n", new_state.theta);
@@ -484,6 +522,10 @@ void update_car_model(struct Controls act) {
 	// assuming constant velocity 
 	// if acceleration is present, the velocity must be updated too
 	agent.car = new_state;
+	write_debug();
+
+	//printf(" new v: %f, theta: %f, delta: %d\n", new_state.v, new_state.theta, act.delta);
+	pthread_mutex_unlock(&mux_agent);
 }
 
 void write_debug() {
@@ -491,7 +533,7 @@ void write_debug() {
 	int y, y_max;
 
 	// refresh data on screen
-	y_max = 50;
+	y_max = 70;
 	for(y = 20; y <= y_max; y+=10) {
 		textout_ex(screen, font, debug, 10, y, BLACK, BLACK);
 	}
@@ -510,4 +552,9 @@ void write_debug() {
 	sprintf(debug,"theta: %f", agent.car.theta);
 	textout_ex(screen, font, debug, 10, 50, white, -1);
 
+	sprintf(debug,"act.a: %f", agent.action.a);
+	textout_ex(screen, font, debug, 10, 60, white, -1);
+
+	sprintf(debug,"act.delta: %f", agent.action.delta);
+	textout_ex(screen, font, debug, 10, 70, white, -1);
 }
