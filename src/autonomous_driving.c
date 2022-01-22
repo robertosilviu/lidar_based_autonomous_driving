@@ -43,6 +43,7 @@ static const char *CAR_FILE = "img/small_car.tga";
 #define MAX_V 300.0
 #define MIN_V 0.0
 #define MAX_AGENTS 1
+#define CRASH_DIST 3
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
 #define STEP 1 // lidar resolution(m) = 1px
@@ -117,6 +118,7 @@ BITMAP *car_bmp = NULL;
 BITMAP *scene_bmp = NULL;
 
 struct Agent agent;
+struct Agent train_agents[MAX_AGENTS];
 int end = 0;
 
 char debug[LEN];
@@ -148,7 +150,7 @@ void* comms_task(void* arg);
 void* display_task(void* arg);
 void* agent_task(void* arg);
 void* sensors_task(void* arg);
-int crash_check();
+void crash_check();
 void reset_scene();
 //--------------------------------UTILS---------------------------------------
 float deg_to_rad(float deg_angle);
@@ -241,19 +243,11 @@ void init_scene() {
 }
 
 void update_scene() {
-	int crash_flag = 0;
-
+	// should be a for cycle for reach agent
+	crash_check();
 	draw_track();
 	draw_car();
 	draw_sensors();
-	// should be a for cycle for reach agent
-	crash_flag = crash_check();
-	if (crash_flag == 1) {
-		printf(" crash occured\n");
-		init_agent();
-		draw_track();
-		draw_car();
-	}
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
 
@@ -308,12 +302,48 @@ void draw_sensors() {
 
 // checks if car has any collision with the track borders
 // if there are collisions return 1, otherwise returns 0
-int crash_check() {
-	int color, x, y;
-	int h, w;
-	
-	h = (int)car_bmp->w; // the real image is vertical so h and w are inverted
-	w = (int)car_bmp->h;
+void crash_check() {
+	//int color, x, y;
+	//int h, w, 
+	int i;
+	int dead_agents[MAX_AGENTS];
+	struct Car new_car;
+
+	// initialize empty car to reset dead agent's car
+	new_car.v = 0.0;
+	new_car.x = 0;
+	new_car.y = 0;
+	new_car.theta = 0;
+
+	for(i = 0; i< MAX_AGENTS; i++) {
+		dead_agents[MAX_AGENTS] = 0;
+	}
+
+	pthread_mutex_lock(&mux_sensors);
+	for(i = 0; i < MAX_AGENTS; i++) {
+		if(sensors[i][0].d <= CRASH_DIST)
+			dead_agents[i] = 1;
+		else if(sensors[i][1].d <= CRASH_DIST)
+			dead_agents[i] = 1;
+		else if(sensors[i][2].d <= CRASH_DIST)
+			dead_agents[i] = 1;
+	}
+	pthread_mutex_unlock(&mux_sensors);
+
+	pthread_mutex_lock(&mux_agent);
+	for(i = 0; i < MAX_AGENTS; i++) {
+		if( dead_agents[i] == 1) {
+			train_agents[i].alive = 0;
+			train_agents[i].car = new_car;
+			// needs to be updated
+			agent.alive = 0;
+			agent.car = new_car;
+		}
+	}
+	pthread_mutex_unlock(&mux_agent);
+	/*
+	h = (int)car_bmp->h; // the real image is vertical so h and w are inverted
+	w = (int)car_bmp->w;
 	// upper left corner
 	x = INIT_CAR_X + (int)agent.car.x;
 	y = INIT_CAR_Y + (int)agent.car.y;
@@ -335,9 +365,8 @@ int crash_check() {
 	color = getpixel(track_bmp,x,y);
 	if (color == BLACK)
 		return 1;
-
+	*/
 	// no collision
-	return 0;
 }
 
 void* display_task(void* arg) {
@@ -461,7 +490,7 @@ float rad_to_deg(float rad_angle) {
 fixed deg_to_fixed(float deg) {
 	float angle = 0.0;
 
-	angle = 64 - deg*(float)256/360;
+	angle = 128 - deg*(float)256/360;
 	//printf("angle is %f\n", angle);
 	return ftofix(angle);
 }
@@ -475,6 +504,7 @@ char get_scancode() {
 
 void init_agent() {
 	struct Car vehicle;
+	int i;
 	
 	printf("Initializing agent...\n");
 
@@ -485,31 +515,12 @@ void init_agent() {
 	vehicle.theta = 0.0;
 	vehicle.v = 0.0;
 	//vehicle.a = 0.0;
-
-	vehicle.left_lidar.x = INIT_CAR_X + car_bmp->h;
-	vehicle.left_lidar.y = INIT_CAR_Y;
-	vehicle.left_lidar.alpha = deg_to_rad(45.0);
-	vehicle.left_lidar.d = read_sensor(
-							vehicle.left_lidar.x, 
-							vehicle.left_lidar.y, 
-							vehicle.theta + vehicle.left_lidar.alpha);
-
-	vehicle.front_lidar.x = INIT_CAR_X + car_bmp->h;
-	vehicle.front_lidar.y = INIT_CAR_Y + (car_bmp->w/2);
-	vehicle.front_lidar.alpha = 0.0;
-	vehicle.front_lidar.d = read_sensor(
-							vehicle.front_lidar.x, 
-							vehicle.front_lidar.y, 
-							vehicle.theta + vehicle.front_lidar.alpha);
-
-	vehicle.right_lidar.x = INIT_CAR_X + car_bmp->h;
-	vehicle.right_lidar.y = INIT_CAR_Y + car_bmp->w;
-	vehicle.right_lidar.alpha = deg_to_rad(-45.0);
-	vehicle.right_lidar.d = read_sensor(
-							vehicle.right_lidar.x, 
-							vehicle.right_lidar.y, 
-							vehicle.theta + vehicle.right_lidar.alpha);
 	
+	for(i = 0; i < MAX_AGENTS; i++) {
+		train_agents[i].alive = 1;
+		train_agents[i].distance = 0.0;
+		train_agents[i].car = vehicle;
+	}
 	agent.car = vehicle;
 	agent.alive = 1;
 	agent.distance = 0.0;
@@ -529,27 +540,27 @@ void refresh_sensors() {
 
 	for(i = 0; i < MAX_AGENTS; i++) {
 		// left lidar
-		lidar.x = INIT_CAR_X + dx + car_bmp->h;
-		lidar.y = INIT_CAR_Y + dy;
 		lidar.alpha = car.theta + deg_to_rad(45.0);
+		lidar.x = INIT_CAR_X + (dx + car_bmp->w)*cos(car.theta);
+		lidar.y = INIT_CAR_Y - (dy + car_bmp->w)*sin(car.theta);
 		lidar.d = read_sensor(
 						lidar.x, 
 						lidar.y, 
 						lidar.alpha);
 		tmp_sensors[i][0] = lidar;
 		// front
-		lidar.x = INIT_CAR_X + dx + car_bmp->h;
-		lidar.y = INIT_CAR_Y + dy + car_bmp->w/2;
 		lidar.alpha = car.theta + deg_to_rad(0.0);
+		lidar.x = INIT_CAR_X + (dx + car_bmp->w)*cos(car.theta) - (dy + car_bmp->h/2)*sin(car.theta);
+		lidar.y = INIT_CAR_Y + (dx + car_bmp->w)*sin(car.theta) + (dy + car_bmp->h/2)*cos(car.theta);
 		lidar.d = read_sensor(
 						lidar.x, 
 						lidar.y, 
 						lidar.alpha);
 		tmp_sensors[i][1] = lidar;
 		// right
-		lidar.x = INIT_CAR_X + dx + car_bmp->h;
-		lidar.y = INIT_CAR_Y + dy + car_bmp->w;
 		lidar.alpha = car.theta + deg_to_rad(-45.0);
+		lidar.x = INIT_CAR_X + dx + car_bmp->w*cos(car.theta) - car_bmp->h*sin(car.theta);
+		lidar.y = INIT_CAR_Y + (dx + car_bmp->w)*sin(car.theta) + (dy + car_bmp->h)*cos(car.theta);
 		lidar.d = read_sensor(
 						lidar.x, 
 						lidar.y, 
@@ -591,12 +602,12 @@ void update_car_model() {
 	float beta, r, omega;
 
 	pthread_mutex_lock(&mux_agent);
-	//dt = T_SCALE * AGENT_PER;
-	dt = T_SCALE * (float)AGENT_PER/1000;
-	//dt = (float)AGENT_PER/1000;
+	//dt = T_SCALE * (float)AGENT_PER/1000;
+	dt = (float)AGENT_PER/1000;
 	old_state = agent.car;
 	act = agent.action;
 
+	old_state.v = old_state.v + act.a*dt;
 	beta = atan2(LR*tan(act.delta), L);
 	r = L/( (tan(act.delta)*cos(beta)) );
 	omega = old_state.v/r;
@@ -608,8 +619,8 @@ void update_car_model() {
 	new_state.y = old_state.y + (vy*dt);
 	new_state.theta = old_state.theta + (omega*dt);
 	//printf("new theta is %f \n", new_state.theta);
-	new_state.v = old_state.v + act.a*dt; // to be checked
-	//new_state.v = old_state.v;
+	//new_state.v = old_state.v + act.a*dt; // to be checked
+	new_state.v = old_state.v;
 	//new_state.a = old_state.a;
 	// assuming constant velocity 
 	// if acceleration is present, the velocity must be updated too
