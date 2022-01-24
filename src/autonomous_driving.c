@@ -21,25 +21,31 @@
 
 #define SIM_X 800
 #define SIM_Y 800
-#define XCEN_SIM SIM_X/2
-#define YCEN_SIM SIM_Y/2
+#define XCEN_SIM (SIM_X/2)
+#define YCEN_SIM (SIM_Y/2)
 #define SCALE 0.16 // 1px = 0.16m
 #define T_SCALE 0.4
-#define PI 3.14
 
 static const char *TRACK_FILE = "img/track_4.tga";
-static const char *CAR_FILE = "img/small_car.tga";
 
 #define INIT_CAR_X 500
 #define INIT_CAR_Y 350
+#define BTM_X INIT_CAR_X // (x,y) coordinates with origin on bottomo left
+#define BTM_Y SIM_Y-INIT_CAR_Y
 #define MAX_THETA 5
 #define MIN_THETA -5
-#define LF 3					// car length to front from centre of gravity
-#define LR 2					// car length to back from centre of gravity
-#define L LF+LR
+#define LF 3.0					// car length to front from centre of gravity
+#define LR 2.0					// car length to back from centre of gravity
+#define WD 2.0					// car width
+#define L (LF+LR)
+#define W_PX (L/SCALE)
+#define H_PX (WD/SCALE)
+#define WHEELBASE 4.0
+#define C_R 0.8 				// friction coefficient
+#define C_A 2.0					// aerodynamic coefficient
 #define G 9.8
-#define MAX_A 1.0*G
-#define MIN_A -1.0*G
+#define MAX_A (1.0*G)
+#define MIN_A (-1.0*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
 #define MAX_AGENTS 1
@@ -59,8 +65,8 @@ static const char *CAR_FILE = "img/small_car.tga";
 // handles agent state update 
 #define AGENT_ID 2
 #define AGENT_PRIO 40
-#define AGENT_PER 30	// ms
-#define AGENT_DLR 30
+#define AGENT_PER 10	// ms
+#define AGENT_DLR 10
 // handles sensors reading
 #define SENSORS_ID 3
 #define SENSORS_PRIO 40
@@ -76,6 +82,12 @@ static const char *CAR_FILE = "img/small_car.tga";
 /*-----------------------------------------------------------------------------*/
 /*								CUSTOM STRUCTURES							   */
 /*-----------------------------------------------------------------------------*/
+// Integer coordinates inside a virtual screen or bitmap
+struct ViewPoint {
+	int x;
+	int y;
+};
+
 struct Lidar {
 	int x;
 	int y;
@@ -92,9 +104,6 @@ struct Car {
 	//float a;
 	//float delta;						// steering angle
 	float theta;							// heading angle
-	struct Lidar left_lidar;
-	struct Lidar front_lidar;
-	struct Lidar right_lidar;
 };
 
 struct Controls {
@@ -114,13 +123,11 @@ struct Agent {
 /*								GLOBAL VARIABLES							   */
 /*-----------------------------------------------------------------------------*/
 BITMAP *track_bmp = NULL;
-BITMAP *car_bmp = NULL;
 BITMAP *scene_bmp = NULL;
 
 struct Agent agent;
 struct Agent train_agents[MAX_AGENTS];
 int end = 0;
-
 char debug[LEN];
 
 struct Lidar sensors[MAX_AGENTS][3];
@@ -153,6 +160,8 @@ void* sensors_task(void* arg);
 void crash_check();
 void reset_scene();
 //--------------------------------UTILS---------------------------------------
+void find_rect_vertices(struct ViewPoint vertices[], int size);
+int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);
 float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
 char get_scancode();
@@ -203,8 +212,8 @@ void init() {
 	// organize app windows
 	//int white = makecol(255, 255, 255);
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
-	init_scene();
 	init_agent();
+	init_scene();
 	refresh_sensors();
 	update_scene();
 
@@ -216,8 +225,6 @@ void init() {
 }
 
 void init_scene() {
-	fixed rot;
-
 	track_bmp = load_bitmap(TRACK_FILE, NULL);
 	if (track_bmp == NULL) {
 		printf("ERROR: file not found\n");
@@ -230,15 +237,8 @@ void init_scene() {
 		exit(1);
 	}
 
-	car_bmp = load_bitmap(CAR_FILE, NULL);
-	if (car_bmp == NULL) {
-		printf("ERROR: file not found\n");
-		exit(1);
-	}
-	
-	rot = deg_to_fixed(0.0);
+	draw_car();
 
-	rotate_sprite(scene_bmp, car_bmp, INIT_CAR_X, INIT_CAR_Y, rot);
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
 
@@ -257,17 +257,55 @@ void draw_track() {
 
 // rotate car sprite inside the scene using fixed points convention
 void draw_car() {
-	float theta_deg;
-	int x, y;
-	fixed rot; // allegro type to express fixed point number
+	int points[8];
+	struct ViewPoint vertices[4];
+	
+	find_rect_vertices(vertices, 4);
+	points[0] = vertices[0].x;
+	points[1] = vertices[0].y;
+	points[2] = vertices[1].x;
+	points[3] = vertices[1].y;
+	points[4] = vertices[2].x;
+	points[5] = vertices[2].y;
+	points[6] = vertices[3].x;
+	points[7] = vertices[3].y;
+	polygon(scene_bmp, 4, points, makecol(255,255,255));
+}
+
+void find_rect_vertices(struct ViewPoint vertices[], int size) {
+	float ca, sa;
+	float x1, y1, x2, y2, x3, y3, x4, y4;
+
+	if(size != 4) {
+		printf("ERROR: find_rect_vertices requires array with dimension = 4!\n");
+		exit(1);
+	}
 
 	pthread_mutex_lock(&mux_agent);
 
-	theta_deg = rad_to_deg(agent.car.theta);
-	rot = deg_to_fixed(theta_deg);
-	x = INIT_CAR_X + agent.car.x/SCALE;
-	y = INIT_CAR_Y - agent.car.y/SCALE;
-	rotate_sprite(scene_bmp, car_bmp, x, y, rot);
+	ca = cos(agent.car.theta);
+	sa = sin(agent.car.theta);
+	// p1 = (0, /WD/2)
+	x1 = agent.car.x + WD/2*sa;
+	y1 = agent.car.y - WD/2*ca;
+	// p2 = (0, WD/2)
+	x2 = agent.car.x - WD/2*sa;
+	y2 = agent.car.y + WD/2*ca;
+	// p3 = (L, WD/2)
+	x3 = agent.car.x + L*ca - WD/2*sa;
+	y3 = agent.car.y + L*sa + (WD/2)*ca;
+	// p4 = (L, -WD/2)
+	x4 = agent.car.x + L*ca + WD/2*sa;
+	y4 = agent.car.y + L*sa - (WD/2)*ca;
+
+	vertices[0].x = BTM_X + x1/SCALE;
+	vertices[0].y = SIM_Y - (BTM_Y + y1/SCALE);
+	vertices[1].x = BTM_X + x2/SCALE;
+	vertices[1].y = SIM_Y - (BTM_Y + y2/SCALE);
+	vertices[2].x = BTM_X + x3/SCALE;
+	vertices[2].y = SIM_Y - (BTM_Y + y3/SCALE);
+	vertices[3].x = BTM_X + x4/SCALE;
+	vertices[3].y = SIM_Y - (BTM_Y + y4/SCALE);
 
 	pthread_mutex_unlock(&mux_agent);
 }
@@ -303,72 +341,66 @@ void draw_sensors() {
 // checks if car has any collision with the track borders
 // if there are collisions return 1, otherwise returns 0
 void crash_check() {
-	//int color, x, y;
-	//int h, w, 
-	int i;
+	int found;
+	int i, k; // used for for cycles
 	int dead_agents[MAX_AGENTS];
 	struct Car new_car;
-
+	struct ViewPoint vertices[MAX_AGENTS][4];
 	// initialize empty car to reset dead agent's car
 	new_car.v = 0.0;
 	new_car.x = 0;
 	new_car.y = 0;
-	new_car.theta = 0;
+	new_car.theta = 0.0;
 
 	for(i = 0; i< MAX_AGENTS; i++) {
 		dead_agents[MAX_AGENTS] = 0;
 	}
 
-	pthread_mutex_lock(&mux_sensors);
-	for(i = 0; i < MAX_AGENTS; i++) {
-		if(sensors[i][0].d <= CRASH_DIST)
-			dead_agents[i] = 1;
-		else if(sensors[i][1].d <= CRASH_DIST)
-			dead_agents[i] = 1;
-		else if(sensors[i][2].d <= CRASH_DIST)
-			dead_agents[i] = 1;
-	}
-	pthread_mutex_unlock(&mux_sensors);
-
 	pthread_mutex_lock(&mux_agent);
 	for(i = 0; i < MAX_AGENTS; i++) {
+		find_rect_vertices(vertices[i], 4);
+		// use y=mx +b
+		for(k = 0; k < 4; k++) {
+			found = check_color_px_in_line(
+						vertices[i][(k+1)%4].x,
+						vertices[i][(k+1)%4].y,
+						vertices[i][k%4].x,
+						vertices[i][k%4].y,
+						0);
+			if(found)
+				dead_agents[i] = 1;
+		}
+		
 		if( dead_agents[i] == 1) {
 			train_agents[i].alive = 0;
 			train_agents[i].car = new_car;
 			// needs to be updated
+			// at each restart the agent should change some parameters for the next simulation
 			agent.alive = 0;
 			agent.car = new_car;
 		}
 	}
 	pthread_mutex_unlock(&mux_agent);
-	/*
-	h = (int)car_bmp->h; // the real image is vertical so h and w are inverted
-	w = (int)car_bmp->w;
-	// upper left corner
-	x = INIT_CAR_X + (int)agent.car.x;
-	y = INIT_CAR_Y + (int)agent.car.y;
-	color = getpixel(track_bmp,x,y);
-	if (color == BLACK)
-		return 1;
-	// upper right corner
-	x += w;
-	color = getpixel(track_bmp,x,y);
-	if (color == BLACK)
-		return 1;
-	// down right corner
-	y += h;
-	color = getpixel(track_bmp,x,y);
-	if (color == BLACK)
-		return 1;
-	// down left corner
-	x -= w;
-	color = getpixel(track_bmp,x,y);
-	if (color == BLACK)
-		return 1;
-	*/
-	// no collision
 }
 
+int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
+	// use y=mx +b
+	int col, x, y, min_x, max_x, j;
+	float m, b;
+	m = (y1 - y0)/(x1 - x0);
+	b = y0 - (m * x0);
+	max_x = (x1 > x0) ? x1 : x0;
+	min_x = (x1 < x0) ? x1 : x0;
+	for(j = min_x; j < max_x; j++) {
+		x = j;
+		y = (m * x) + b;
+		col = getpixel(scene_bmp, x, y);
+		if(col == color)
+			return 1;
+	}
+	// pixel of provided color not found
+	return 0;
+}
 void* display_task(void* arg) {
 	//struct Controls action;
 	int i;
@@ -480,11 +512,11 @@ void* comms_task(void* arg) {
 }
 
 float deg_to_rad(float deg_angle) {
-	return deg_angle*PI/180;
+	return deg_angle*M_PI/180;
 }
 
 float rad_to_deg(float rad_angle) {
-	return rad_angle*180/PI;
+	return rad_angle*180/M_PI;
 }
 
 fixed deg_to_fixed(float deg) {
@@ -508,12 +540,10 @@ void init_agent() {
 	
 	printf("Initializing agent...\n");
 
-	//vehicle.x = INIT_CAR_X;
-	//vehicle.y = INIT_CAR_Y;
 	vehicle.x = 0;
 	vehicle.y = 0;
 	vehicle.theta = 0.0;
-	vehicle.v = 0.0;
+	vehicle.v = 0;
 	//vehicle.a = 0.0;
 	
 	for(i = 0; i < MAX_AGENTS; i++) {
@@ -531,18 +561,18 @@ void refresh_sensors() {
 	struct Lidar lidar;
 	struct Car car;
 	struct Lidar tmp_sensors[MAX_AGENTS][3];
-	float dx, dy;
+	float x_p, y_p;
 	pthread_mutex_lock(&mux_agent);
 	car = agent.car;
-	
-	dx = car.x/SCALE;
-	dy = car.y/SCALE;
 
 	for(i = 0; i < MAX_AGENTS; i++) {
 		// left lidar
 		lidar.alpha = car.theta + deg_to_rad(45.0);
-		lidar.x = INIT_CAR_X + (dx + car_bmp->w)*cos(car.theta);
-		lidar.y = INIT_CAR_Y - (dy + car_bmp->w)*sin(car.theta);
+		x_p = car.x + L*cos(car.theta);	// global frame in m from bottom left
+		y_p = car.y + L*sin(car.theta);
+		//printf("x_p: %f, y_p: %f\n", x_p, y_p);
+		lidar.x = BTM_X + (x_p/SCALE);
+		lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
 		lidar.d = read_sensor(
 						lidar.x, 
 						lidar.y, 
@@ -550,8 +580,8 @@ void refresh_sensors() {
 		tmp_sensors[i][0] = lidar;
 		// front
 		lidar.alpha = car.theta + deg_to_rad(0.0);
-		lidar.x = INIT_CAR_X + (dx + car_bmp->w)*cos(car.theta) - (dy + car_bmp->h/2)*sin(car.theta);
-		lidar.y = INIT_CAR_Y + (dx + car_bmp->w)*sin(car.theta) + (dy + car_bmp->h/2)*cos(car.theta);
+		lidar.x = BTM_X + (x_p/SCALE);
+		lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
 		lidar.d = read_sensor(
 						lidar.x, 
 						lidar.y, 
@@ -559,8 +589,8 @@ void refresh_sensors() {
 		tmp_sensors[i][1] = lidar;
 		// right
 		lidar.alpha = car.theta + deg_to_rad(-45.0);
-		lidar.x = INIT_CAR_X + dx + car_bmp->w*cos(car.theta) - car_bmp->h*sin(car.theta);
-		lidar.y = INIT_CAR_Y + (dx + car_bmp->w)*sin(car.theta) + (dy + car_bmp->h)*cos(car.theta);
+		lidar.x = BTM_X + (x_p/SCALE);
+		lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
 		lidar.d = read_sensor(
 						lidar.x, 
 						lidar.y, 
@@ -599,7 +629,9 @@ void update_car_model() {
 	struct Car old_state, new_state;
 	struct Controls act;
 	float vx, vy, dt;
-	float beta, r, omega;
+	float omega;
+	// /float friction;
+	float norm_theta;
 
 	pthread_mutex_lock(&mux_agent);
 	//dt = T_SCALE * (float)AGENT_PER/1000;
@@ -607,6 +639,8 @@ void update_car_model() {
 	old_state = agent.car;
 	act = agent.action;
 
+	// CENTRE OF MASS
+	/*
 	old_state.v = old_state.v + act.a*dt;
 	beta = atan2(LR*tan(act.delta), L);
 	r = L/( (tan(act.delta)*cos(beta)) );
@@ -625,8 +659,23 @@ void update_car_model() {
 	// assuming constant velocity 
 	// if acceleration is present, the velocity must be updated too
 	agent.car = new_state;
+	*/
 
 	//printf(" new v: %f, theta: %f, delta: %d\n", new_state.v, new_state.theta, act.delta);
+
+	// REAL AXEL 
+	//friction = old_state.v * (C_R + C_A * old_state.v);
+	new_state.v = old_state.v + dt * (act.a); // - friction);
+	norm_theta = atan2(sin(old_state.theta), cos(old_state.theta));
+	vx = old_state.v*cos(norm_theta);
+	vy = old_state.v*sin(norm_theta);
+	omega = old_state.v * tan(act.delta) / WHEELBASE;
+	new_state.x = old_state.x + (vx * dt);
+	new_state.y = old_state.y + (vy * dt);
+	new_state.theta = norm_theta + (omega * dt);
+
+	agent.car = new_state;
+
 	pthread_mutex_unlock(&mux_agent);
 }
 
