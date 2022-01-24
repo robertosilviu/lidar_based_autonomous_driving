@@ -244,7 +244,7 @@ void init_scene() {
 
 void update_scene() {
 	// should be a for cycle for reach agent
-	crash_check();
+	//crash_check();
 	draw_track();
 	draw_car();
 	draw_sensors();
