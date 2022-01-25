@@ -8,7 +8,7 @@
 /*-----------------------------------------------------------------------------*/
 /*								CONSTANTS									   */
 /*-----------------------------------------------------------------------------*/
-
+#define PRINTLINE printf("LINE: %d\n", __LINE__)
 #define LEN 50 // length of array of chars
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
@@ -32,8 +32,8 @@ static const char *TRACK_FILE = "img/track_4.tga";
 #define INIT_CAR_Y 350
 #define BTM_X INIT_CAR_X // (x,y) coordinates with origin on bottomo left
 #define BTM_Y SIM_Y-INIT_CAR_Y
-#define MAX_THETA 5
-#define MIN_THETA -5
+#define MAX_THETA 15
+#define MIN_THETA -15
 #define LF 3.0					// car length to front from centre of gravity
 #define LR 2.0					// car length to back from centre of gravity
 #define WD 2.0					// car width
@@ -244,7 +244,7 @@ void init_scene() {
 
 void update_scene() {
 	// should be a for cycle for reach agent
-	//crash_check();
+	crash_check();
 	draw_track();
 	draw_car();
 	draw_sensors();
@@ -260,6 +260,7 @@ void draw_car() {
 	int points[8];
 	struct ViewPoint vertices[4];
 	
+	pthread_mutex_lock(&mux_agent);
 	find_rect_vertices(vertices, 4);
 	points[0] = vertices[0].x;
 	points[1] = vertices[0].y;
@@ -269,6 +270,7 @@ void draw_car() {
 	points[5] = vertices[2].y;
 	points[6] = vertices[3].x;
 	points[7] = vertices[3].y;
+	pthread_mutex_unlock(&mux_agent);
 	polygon(scene_bmp, 4, points, makecol(255,255,255));
 }
 
@@ -281,7 +283,7 @@ void find_rect_vertices(struct ViewPoint vertices[], int size) {
 		exit(1);
 	}
 
-	pthread_mutex_lock(&mux_agent);
+	//pthread_mutex_lock(&mux_agent);
 
 	ca = cos(agent.car.theta);
 	sa = sin(agent.car.theta);
@@ -307,7 +309,7 @@ void find_rect_vertices(struct ViewPoint vertices[], int size) {
 	vertices[3].x = BTM_X + x4/SCALE;
 	vertices[3].y = SIM_Y - (BTM_Y + y4/SCALE);
 
-	pthread_mutex_unlock(&mux_agent);
+	//pthread_mutex_unlock(&mux_agent);
 }
 
 // draw the lidar beams on the TRACK sprite
@@ -348,14 +350,13 @@ void crash_check() {
 	struct ViewPoint vertices[MAX_AGENTS][4];
 	// initialize empty car to reset dead agent's car
 	new_car.v = 0.0;
-	new_car.x = 0;
-	new_car.y = 0;
+	new_car.x = 0.0;
+	new_car.y = 0.0;
 	new_car.theta = 0.0;
 
 	for(i = 0; i< MAX_AGENTS; i++) {
 		dead_agents[MAX_AGENTS] = 0;
 	}
-
 	pthread_mutex_lock(&mux_agent);
 	for(i = 0; i < MAX_AGENTS; i++) {
 		find_rect_vertices(vertices[i], 4);
@@ -385,18 +386,28 @@ void crash_check() {
 
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	// use y=mx +b
-	int col, x, y, min_x, max_x, j;
+	int col, x, y, min_x, max_x, min_y, max_y, j;
 	float m, b;
-	m = (y1 - y0)/(x1 - x0);
-	b = y0 - (m * x0);
-	max_x = (x1 > x0) ? x1 : x0;
-	min_x = (x1 < x0) ? x1 : x0;
-	for(j = min_x; j < max_x; j++) {
-		x = j;
-		y = (m * x) + b;
-		col = getpixel(scene_bmp, x, y);
-		if(col == color)
-			return 1;
+	if( (x1 - x0) == 0) { // m goes to infinity
+		max_y = (y1 > y0) ? y1 : y0;
+		min_y = (y1 < y0) ? y1 : y0;
+		for(j = min_y; j < max_y; j++) {
+			col = getpixel(scene_bmp, x0, j);
+			if(col == color)
+				return 1;
+		}
+	}else {
+		m = (y1 - y0)/(x1 - x0);
+		b = y0 - (m * x0);
+		max_x = (x1 > x0) ? x1 : x0;
+		min_x = (x1 < x0) ? x1 : x0;
+		for(j = min_x; j < max_x; j++) {
+			x = j;
+			y = (int)(m * x) + b;
+			col = getpixel(scene_bmp, x, y);
+			if(col == color)
+				return 1;
+		}
 	}
 	// pixel of provided color not found
 	return 0;
