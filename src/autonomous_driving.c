@@ -8,7 +8,7 @@
 /*-----------------------------------------------------------------------------*/
 /*								CONSTANTS									   */
 /*-----------------------------------------------------------------------------*/
-
+#define PRINTLINE printf("LINE: %d\n", __LINE__)
 #define LEN 50 // length of array of chars
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
@@ -32,8 +32,8 @@ static const char *TRACK_FILE = "img/track_4.tga";
 #define INIT_CAR_Y 350
 #define BTM_X INIT_CAR_X // (x,y) coordinates with origin on bottomo left
 #define BTM_Y SIM_Y-INIT_CAR_Y
-#define MAX_THETA 5
-#define MIN_THETA -5
+#define MAX_THETA 15
+#define MIN_THETA -15
 #define LF 3.0					// car length to front from centre of gravity
 #define LR 2.0					// car length to back from centre of gravity
 #define WD 2.0					// car width
@@ -44,12 +44,14 @@ static const char *TRACK_FILE = "img/track_4.tga";
 #define C_R 0.8 				// friction coefficient
 #define C_A 2.0					// aerodynamic coefficient
 #define G 9.8
-#define MAX_A (1.0*G)
-#define MIN_A (-1.0*G)
+#define MAX_A (0.5*G)
+#define MIN_A (-0.5*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
 #define MAX_AGENTS 1
 #define CRASH_DIST 3
+#define INFERENCE 1
+#define TRAINING 0
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
 #define STEP 1 // lidar resolution(m) = 1px
@@ -126,10 +128,10 @@ BITMAP *track_bmp = NULL;
 BITMAP *scene_bmp = NULL;
 
 struct Agent agent;
-struct Agent train_agents[MAX_AGENTS];
+struct Agent agents[MAX_AGENTS];
 int end = 0;
 char debug[LEN];
-
+int mode = TRAINING;
 struct Lidar sensors[MAX_AGENTS][3];
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
@@ -160,7 +162,7 @@ void* sensors_task(void* arg);
 void crash_check();
 void reset_scene();
 //--------------------------------UTILS---------------------------------------
-void find_rect_vertices(struct ViewPoint vertices[], int size);
+void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);
 float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
@@ -193,8 +195,6 @@ int main() {
 void init() {
 	allegro_init();
 	install_keyboard();
-	///install_mouse();
-	//show_mouse(screen);
 
 	set_color_depth(BITS_COL);
 	set_gfx_mode(GFX_AUTODETECT_WINDOWED, WIN_X, WIN_Y, 0, 0);
@@ -244,7 +244,7 @@ void init_scene() {
 
 void update_scene() {
 	// should be a for cycle for reach agent
-	//crash_check();
+	crash_check();
 	draw_track();
 	draw_car();
 	draw_sensors();
@@ -258,45 +258,48 @@ void draw_track() {
 // rotate car sprite inside the scene using fixed points convention
 void draw_car() {
 	int points[8];
+	int i;
 	struct ViewPoint vertices[4];
 	
-	find_rect_vertices(vertices, 4);
-	points[0] = vertices[0].x;
-	points[1] = vertices[0].y;
-	points[2] = vertices[1].x;
-	points[3] = vertices[1].y;
-	points[4] = vertices[2].x;
-	points[5] = vertices[2].y;
-	points[6] = vertices[3].x;
-	points[7] = vertices[3].y;
-	polygon(scene_bmp, 4, points, makecol(255,255,255));
+	pthread_mutex_lock(&mux_agent);
+	for(i = 0; i < MAX_AGENTS; i++) {
+		find_rect_vertices(vertices, 4, i);
+		points[0] = vertices[0].x;
+		points[1] = vertices[0].y;
+		points[2] = vertices[1].x;
+		points[3] = vertices[1].y;
+		points[4] = vertices[2].x;
+		points[5] = vertices[2].y;
+		points[6] = vertices[3].x;
+		points[7] = vertices[3].y;
+		polygon(scene_bmp, 4, points, makecol(255,255,255));
+	}
+	pthread_mutex_unlock(&mux_agent);
 }
 
-void find_rect_vertices(struct ViewPoint vertices[], int size) {
+void find_rect_vertices(struct ViewPoint vertices[], int size, int id) {
 	float ca, sa;
 	float x1, y1, x2, y2, x3, y3, x4, y4;
-
+	struct Car car;
 	if(size != 4) {
 		printf("ERROR: find_rect_vertices requires array with dimension = 4!\n");
 		exit(1);
 	}
-
-	pthread_mutex_lock(&mux_agent);
-
-	ca = cos(agent.car.theta);
-	sa = sin(agent.car.theta);
+	car = agents[id].car;
+	ca = cos(car.theta);
+	sa = sin(car.theta);
 	// p1 = (0, /WD/2)
-	x1 = agent.car.x + WD/2*sa;
-	y1 = agent.car.y - WD/2*ca;
+	x1 = car.x + WD/2*sa;
+	y1 = car.y - WD/2*ca;
 	// p2 = (0, WD/2)
-	x2 = agent.car.x - WD/2*sa;
-	y2 = agent.car.y + WD/2*ca;
+	x2 = car.x - WD/2*sa;
+	y2 = car.y + WD/2*ca;
 	// p3 = (L, WD/2)
-	x3 = agent.car.x + L*ca - WD/2*sa;
-	y3 = agent.car.y + L*sa + (WD/2)*ca;
+	x3 = car.x + L*ca - WD/2*sa;
+	y3 = car.y + L*sa + (WD/2)*ca;
 	// p4 = (L, -WD/2)
-	x4 = agent.car.x + L*ca + WD/2*sa;
-	y4 = agent.car.y + L*sa - (WD/2)*ca;
+	x4 = car.x + L*ca + WD/2*sa;
+	y4 = car.y + L*sa - (WD/2)*ca;
 
 	vertices[0].x = BTM_X + x1/SCALE;
 	vertices[0].y = SIM_Y - (BTM_Y + y1/SCALE);
@@ -306,8 +309,6 @@ void find_rect_vertices(struct ViewPoint vertices[], int size) {
 	vertices[2].y = SIM_Y - (BTM_Y + y3/SCALE);
 	vertices[3].x = BTM_X + x4/SCALE;
 	vertices[3].y = SIM_Y - (BTM_Y + y4/SCALE);
-
-	pthread_mutex_unlock(&mux_agent);
 }
 
 // draw the lidar beams on the TRACK sprite
@@ -348,17 +349,16 @@ void crash_check() {
 	struct ViewPoint vertices[MAX_AGENTS][4];
 	// initialize empty car to reset dead agent's car
 	new_car.v = 0.0;
-	new_car.x = 0;
-	new_car.y = 0;
+	new_car.x = 0.0;
+	new_car.y = 0.0;
 	new_car.theta = 0.0;
 
 	for(i = 0; i< MAX_AGENTS; i++) {
 		dead_agents[MAX_AGENTS] = 0;
 	}
-
 	pthread_mutex_lock(&mux_agent);
 	for(i = 0; i < MAX_AGENTS; i++) {
-		find_rect_vertices(vertices[i], 4);
+		find_rect_vertices(vertices[i], 4, i);
 		// use y=mx +b
 		for(k = 0; k < 4; k++) {
 			found = check_color_px_in_line(
@@ -372,12 +372,9 @@ void crash_check() {
 		}
 		
 		if( dead_agents[i] == 1) {
-			train_agents[i].alive = 0;
-			train_agents[i].car = new_car;
-			// needs to be updated
+			agents[i].alive = 0;
+			agents[i].car = new_car;
 			// at each restart the agent should change some parameters for the next simulation
-			agent.alive = 0;
-			agent.car = new_car;
 		}
 	}
 	pthread_mutex_unlock(&mux_agent);
@@ -385,18 +382,28 @@ void crash_check() {
 
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	// use y=mx +b
-	int col, x, y, min_x, max_x, j;
+	int col, x, y, min_x, max_x, min_y, max_y, j;
 	float m, b;
-	m = (y1 - y0)/(x1 - x0);
-	b = y0 - (m * x0);
-	max_x = (x1 > x0) ? x1 : x0;
-	min_x = (x1 < x0) ? x1 : x0;
-	for(j = min_x; j < max_x; j++) {
-		x = j;
-		y = (m * x) + b;
-		col = getpixel(scene_bmp, x, y);
-		if(col == color)
-			return 1;
+	if( (x1 - x0) == 0) { // m goes to infinity
+		max_y = (y1 > y0) ? y1 : y0;
+		min_y = (y1 < y0) ? y1 : y0;
+		for(j = min_y; j < max_y; j++) {
+			col = getpixel(scene_bmp, x0, j);
+			if(col == color)
+				return 1;
+		}
+	}else {
+		m = (y1 - y0)/(x1 - x0);
+		b = y0 - (m * x0);
+		max_x = (x1 > x0) ? x1 : x0;
+		min_x = (x1 < x0) ? x1 : x0;
+		for(j = min_x; j < max_x; j++) {
+			x = j;
+			y = (int)(m * x) + b;
+			col = getpixel(scene_bmp, x, y);
+			if(col == color)
+				return 1;
+		}
 	}
 	// pixel of provided color not found
 	return 0;
@@ -427,7 +434,9 @@ void* agent_task(void* arg) {
 	i = get_task_index(arg);
 	set_activation(i);
 
-	do {
+	do {	
+		// need to update agent when crash occured 
+
 		update_car_model();
 		wait_for_activation(i);
 	} while (!end);
@@ -462,8 +471,8 @@ void* comms_task(void* arg) {
 	do {
 		if (keypressed()) {
 			pthread_mutex_lock(&mux_agent);
-			act = agent.action;
-			//car = agent.car;
+			act = agents[0].action;
+			//car = agents[0].car;
 			delta = rad_to_deg(act.delta);
 			scan = get_scancode();
 			switch (scan) {
@@ -493,14 +502,24 @@ void* comms_task(void* arg) {
 						delta = MIN_THETA;
 					act.delta = deg_to_rad(delta);
 					break;
+				case KEY_M:
+					if( mode == TRAINING) {
+						mode = INFERENCE;
+					}else if( mode == INFERENCE) {
+						mode = TRAINING;
+					}else {
+						printf("ERROR: wrong mode! Should be 0 or 1\n");
+						exit(1);
+					}
+					break;
 				default:
 					break;
 			}
 
 			//printf("delta: %f, d_rad: %f\n", delta, act.delta);
-			agent.action = act;
-			//printf("a: %f, delta: %f \n", agent.action.a, agent.action.delta);
-			//agent.car = car;
+			agents[0].action = act;
+			//printf("a: %f, delta: %f \n", agents[0].action.a, agents[0].action.delta);
+			//agents[0].car = car;
 			pthread_mutex_unlock(&mux_agent);
 		}
 		wait_for_activation(i);
@@ -547,13 +566,10 @@ void init_agent() {
 	//vehicle.a = 0.0;
 	
 	for(i = 0; i < MAX_AGENTS; i++) {
-		train_agents[i].alive = 1;
-		train_agents[i].distance = 0.0;
-		train_agents[i].car = vehicle;
+		agents[i].alive = 1;
+		agents[i].distance = 0.0;
+		agents[i].car = vehicle;
 	}
-	agent.car = vehicle;
-	agent.alive = 1;
-	agent.distance = 0.0;
 }
 
 void refresh_sensors() {
@@ -563,9 +579,9 @@ void refresh_sensors() {
 	struct Lidar tmp_sensors[MAX_AGENTS][3];
 	float x_p, y_p;
 	pthread_mutex_lock(&mux_agent);
-	car = agent.car;
 
 	for(i = 0; i < MAX_AGENTS; i++) {
+		car = agents[i].car;
 		// left lidar
 		lidar.alpha = car.theta + deg_to_rad(45.0);
 		x_p = car.x + L*cos(car.theta);	// global frame in m from bottom left
@@ -632,50 +648,52 @@ void update_car_model() {
 	float omega;
 	// /float friction;
 	float norm_theta;
+	int i;
 
 	pthread_mutex_lock(&mux_agent);
 	//dt = T_SCALE * (float)AGENT_PER/1000;
 	dt = (float)AGENT_PER/1000;
-	old_state = agent.car;
-	act = agent.action;
+	for(i = 0; i < MAX_AGENTS; i++) {
+		old_state = agents[i].car;
+		act = agents[i].action;
 
-	// CENTRE OF MASS
-	/*
-	old_state.v = old_state.v + act.a*dt;
-	beta = atan2(LR*tan(act.delta), L);
-	r = L/( (tan(act.delta)*cos(beta)) );
-	omega = old_state.v/r;
+		// CENTRE OF MASS
+		/*
+		old_state.v = old_state.v + act.a*dt;
+		beta = atan2(LR*tan(act.delta), L);
+		r = L/( (tan(act.delta)*cos(beta)) );
+		omega = old_state.v/r;
 
-	vx = old_state.v*cos(old_state.theta+beta);
-	vy = old_state.v*sin(old_state.theta+beta);
-	new_state.x = old_state.x + (vx*dt);
-	//printf("vx is: %f\n", vx*dt);
-	new_state.y = old_state.y + (vy*dt);
-	new_state.theta = old_state.theta + (omega*dt);
-	//printf("new theta is %f \n", new_state.theta);
-	//new_state.v = old_state.v + act.a*dt; // to be checked
-	new_state.v = old_state.v;
-	//new_state.a = old_state.a;
-	// assuming constant velocity 
-	// if acceleration is present, the velocity must be updated too
-	agent.car = new_state;
-	*/
+		vx = old_state.v*cos(old_state.theta+beta);
+		vy = old_state.v*sin(old_state.theta+beta);
+		new_state.x = old_state.x + (vx*dt);
+		//printf("vx is: %f\n", vx*dt);
+		new_state.y = old_state.y + (vy*dt);
+		new_state.theta = old_state.theta + (omega*dt);
+		//printf("new theta is %f \n", new_state.theta);
+		//new_state.v = old_state.v + act.a*dt; // to be checked
+		new_state.v = old_state.v;
+		//new_state.a = old_state.a;
+		// assuming constant velocity 
+		// if acceleration is present, the velocity must be updated too
+		agent.car = new_state;
+		*/
 
-	//printf(" new v: %f, theta: %f, delta: %d\n", new_state.v, new_state.theta, act.delta);
+		//printf(" new v: %f, theta: %f, delta: %d\n", new_state.v, new_state.theta, act.delta);
 
-	// REAL AXEL 
-	//friction = old_state.v * (C_R + C_A * old_state.v);
-	new_state.v = old_state.v + dt * (act.a); // - friction);
-	norm_theta = atan2(sin(old_state.theta), cos(old_state.theta));
-	vx = old_state.v*cos(norm_theta);
-	vy = old_state.v*sin(norm_theta);
-	omega = old_state.v * tan(act.delta) / WHEELBASE;
-	new_state.x = old_state.x + (vx * dt);
-	new_state.y = old_state.y + (vy * dt);
-	new_state.theta = norm_theta + (omega * dt);
+		// REAR AXEL 
+		//friction = old_state.v * (C_R + C_A * old_state.v);
+		new_state.v = old_state.v + dt * (act.a); // - friction);
+		norm_theta = atan2(sin(old_state.theta), cos(old_state.theta));
+		vx = old_state.v*cos(norm_theta);
+		vy = old_state.v*sin(norm_theta);
+		omega = old_state.v * tan(act.delta) / WHEELBASE;
+		new_state.x = old_state.x + (vx * dt);
+		new_state.y = old_state.y + (vy * dt);
+		new_state.theta = norm_theta + (omega * dt);
 
-	agent.car = new_state;
-
+		agents[i].car = new_state;
+	}
 	pthread_mutex_unlock(&mux_agent);
 }
 
@@ -692,22 +710,26 @@ void write_debug() {
 	white = makecol(255,255,255);
 
 	pthread_mutex_lock(&mux_agent);
-	sprintf(debug,"x: %f", agent.car.x);
+	sprintf(debug,"x: %f", agents[0].car.x);
 	textout_ex(screen, font, debug, 10, 20, white, -1);
 
-	sprintf(debug,"y: %f", agent.car.y);
+	sprintf(debug,"y: %f", agents[0].car.y);
 	textout_ex(screen, font, debug, 10, 30, white, -1);
 
-	sprintf(debug,"v: %f", agent.car.v);
+	sprintf(debug,"v: %f", agents[0].car.v);
 	textout_ex(screen, font, debug, 10, 40, white, -1);
 
-	sprintf(debug,"theta: %f", rad_to_deg(agent.car.theta));
+	sprintf(debug,"theta: %f", rad_to_deg(agents[0].car.theta));
 	textout_ex(screen, font, debug, 10, 50, white, -1);
 
-	sprintf(debug,"act.a: %f", agent.action.a);
+	sprintf(debug,"act.a: %f", agents[0].action.a);
 	textout_ex(screen, font, debug, 10, 60, white, -1);
 
-	sprintf(debug,"act.delta: %f", agent.action.delta);
+	sprintf(debug,"act.delta: %f", agents[0].action.delta);
 	textout_ex(screen, font, debug, 10, 70, white, -1);
+
+	sprintf(debug,"alive: %d", agents[0].alive);
+	textout_ex(screen, font, debug, 10, 80, white, -1);
+
 	pthread_mutex_unlock(&mux_agent);
 }
