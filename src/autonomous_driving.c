@@ -161,6 +161,8 @@ void* agent_task(void* arg);
 void* sensors_task(void* arg);
 void crash_check();
 void reset_scene();
+//-------------------------------- Reinforcement Learning---------------------
+float action_to_steering(int action_k);
 //--------------------------------UTILS---------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);
@@ -732,4 +734,37 @@ void write_debug() {
 	textout_ex(screen, font, debug, 10, 80, white, -1);
 
 	pthread_mutex_unlock(&mux_agent);
+}
+
+float action_to_steering(int action_k) {
+	float x, y, z;
+	int n_actions = (MAX_THETA*2)-1;
+
+	if ((action_k < 0) || (action_k > n_actions)) {
+		printf("ERROR: AGENT action should be an index from 0 to %d\n", n_actions);
+		exit(1);
+	}
+
+	x = (float)action_k/n_actions;
+	y = 2*x -1;
+	z = MAX_THETA*y*M_PI/180;
+
+	return z;
+}
+
+// combine left and right lidar by getting d_left - d_right
+// without Kohonen network
+int decode_lidar_to_state(int d_left, int d_right, int d_front) {
+	float delta, front, y;
+	int s1, s2, s;
+
+	delta = (d_left - d_right)/(SMAX+1);
+	front = d_front/SMAX;
+
+	y = (delta+1)/2;
+	s1 = floor(SMAX * y); // to be checked
+	s2 = floor(SMAX * front);
+	s = s2*SMAX +s1;
+
+	return s;
 }

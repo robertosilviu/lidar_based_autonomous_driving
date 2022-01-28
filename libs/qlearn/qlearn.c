@@ -104,7 +104,7 @@ int ql_best_action(int s) {
 	m = Q[s][0];
 	ba = 0;
 
-	for(a = 1; a < n_states; a++) {
+	for(a = 1; a < n_actions; a++) {
 		if (Q[s][a] > m) {
 			m = Q[s][a];
 			ba = a;
