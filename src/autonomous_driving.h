@@ -123,6 +123,7 @@ struct Agent {
 static const char *TRACK_FILE = "img/track_4.tga";
 BITMAP *track_bmp = NULL;
 BITMAP *scene_bmp = NULL;
+BITMAP *debug_bmp = NULL;
 BITMAP *deadline_bmp = NULL;
 
 struct Agent agent; // to be removed

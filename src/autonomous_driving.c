@@ -47,10 +47,16 @@ void init() {
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
 	// organize app windows
+	// deadline window
 	w = WIN_X - SIM_X;
 	h = DMISS_H;
 	deadline_bmp = create_bitmap(w, h);
+	// debug window
+	w = WIN_X - SIM_X;
+	h = SIM_Y - DMISS_H;
+	debug_bmp = create_bitmap(w, h);
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
+	// track window
 	init_agent();
 	init_scene();
 	refresh_sensors();
@@ -259,6 +265,8 @@ void* display_task(void* arg) {
 		//action.delta = 0;
 
 		update_scene();
+
+		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
 
@@ -587,39 +595,50 @@ void update_car_model() {
 
 void write_debug() {
 	int white;
-	int y, y_max;
-
-	// refresh data on screen
-	y_max = 70;
-	for(y = 20; y <= y_max; y+=10) {
-		textout_ex(screen, font, debug, 10, y, BLACK, BLACK);
-	}
-
+	int x, y;
+	struct Agent agent;
+	
+	x = 0;
 	white = makecol(255,255,255);
+	clear_to_color(debug_bmp, 0);
 
 	pthread_mutex_lock(&mux_agent);
-	sprintf(debug,"x: %f", agents[0].car.x);
-	textout_ex(screen, font, debug, 10, 20, white, -1);
-
-	sprintf(debug,"y: %f", agents[0].car.y);
-	textout_ex(screen, font, debug, 10, 30, white, -1);
-
-	sprintf(debug,"v: %f", agents[0].car.v);
-	textout_ex(screen, font, debug, 10, 40, white, -1);
-
-	sprintf(debug,"theta: %f", rad_to_deg(agents[0].car.theta));
-	textout_ex(screen, font, debug, 10, 50, white, -1);
-
-	sprintf(debug,"act.a: %f", agents[0].action.a);
-	textout_ex(screen, font, debug, 10, 60, white, -1);
-
-	sprintf(debug,"act.delta: %f", agents[0].action.delta);
-	textout_ex(screen, font, debug, 10, 70, white, -1);
-
-	sprintf(debug,"alive: %d", agents[0].alive);
-	textout_ex(screen, font, debug, 10, 80, white, -1);
-
+	agent = agents[0];
 	pthread_mutex_unlock(&mux_agent);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"x: %f", agent.car.x);
+	textout_ex(debug_bmp, font, debug, x, 20, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"y: %f", agent.car.y);
+	textout_ex(debug_bmp, font, debug, x, 30, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"v: %f", agent.car.v);
+	textout_ex(debug_bmp, font, debug, x, 40, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"theta: %f", rad_to_deg(agent.car.theta));
+	textout_ex(debug_bmp, font, debug, x, 50, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"act.a: %f", agent.action.a);
+	textout_ex(debug_bmp, font, debug, x, 60, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"act.delta: %f", agent.action.delta);
+	textout_ex(debug_bmp, font, debug, x, 70, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"alive: %d", agent.alive);
+	textout_ex(debug_bmp, font, debug, x, 80, white, -1);
+
+	//pthread_mutex_unlock(&mux_agent);
+
+	x = SIM_X;
+	y = (WIN_Y - SIM_Y + 50);
+	blit(debug_bmp, screen, 0, 0, x, y, debug_bmp->w, debug_bmp->h);
 }
 
 float action_to_steering(int action_k) {
