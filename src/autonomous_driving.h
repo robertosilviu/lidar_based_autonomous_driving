@@ -7,6 +7,9 @@
 /*-----------------------------------------------------------------------------*/
 #define PRINTLINE printf("LINE: %d\n", __LINE__)
 #define LEN 50 // length of array of chars
+#define BUF_LEN 5
+#define GRAPH_H 300
+#define GRAPH_W 500
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
 #define WIN_Y 1024
@@ -117,6 +120,11 @@ struct Agent {
 	// da aggiungere il reward
 };
 
+struct cbuf {
+	int top;
+	int x[BUF_LEN];
+	float y[BUF_LEN];
+};
 /*-----------------------------------------------------------------------------*/
 /*								GLOBAL VARIABLES							   */
 /*-----------------------------------------------------------------------------*/
@@ -125,6 +133,7 @@ BITMAP *track_bmp = NULL;
 BITMAP *scene_bmp = NULL;
 BITMAP *debug_bmp = NULL;
 BITMAP *deadline_bmp = NULL;
+BITMAP *graph_bmp = NULL;
 
 struct Agent agent; // to be removed
 struct Agent agents[MAX_AGENTS];
@@ -133,6 +142,7 @@ char debug[LEN];
 int mode = TRAINING;
 struct Lidar sensors[MAX_AGENTS][3];
 
+struct cbuf graph_buff;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
 //---------------------------------------------------------------------------
@@ -154,6 +164,7 @@ void draw_sensors();
 void update_scene();
 void reset_scene();
 void show_dmiss();
+void show_rl_graph();
 //------------------------------- Tasks --------------------------------------
 void* comms_task(void* arg);
 void* display_task(void* arg);
@@ -178,5 +189,5 @@ float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
 char get_scancode();
 fixed deg_to_fixed(float deg);
-
+void push_to_cbuf(float x, float y);
 void write_debug();

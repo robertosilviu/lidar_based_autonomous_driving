@@ -47,6 +47,10 @@ void init() {
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
 	// organize app windows
+	// graph window
+	w = WIN_X;
+	h = WIN_Y - SIM_Y;
+	graph_bmp = create_bitmap(w, h);
 	// deadline window
 	w = WIN_X - SIM_X;
 	h = DMISS_H;
@@ -253,6 +257,52 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	// pixel of provided color not found
 	return 0;
 }
+
+// needs mutex
+void push_to_cbuf(float x, float y) {
+	int curr_id;
+
+	curr_id = graph_buff.top;
+	curr_id = (curr_id + 1) % BUF_LEN;
+	// save the data
+	graph_buff.x[curr_id] = curr_id;
+	graph_buff.y[curr_id] = y;
+	graph_buff.top = curr_id;
+}
+
+void show_rl_graph() {
+	int px_h, px_w, white;
+	struct ViewPoint p1, p2;
+	int i;	// used for for cycle
+	float scale_y, scale_x, g_h;
+	// it needs a mutex for buffer access
+	px_h = GRAPH_H;
+	px_w = GRAPH_W;
+	white = makecol(255,255,255);
+	clear_to_color(graph_bmp, 0);
+
+	for(i =0; i < BUF_LEN; i++) {
+		if(graph_buff.y[i] > g_h)
+			g_h = graph_buff.y[i];
+	}
+
+	// find scale based on max value stored in buffer
+	scale_y = (float)g_h/px_h;
+	scale_x = px_w/BUF_LEN; // amount of pixel for 1 unit of buffer
+
+	for(i = 0; i < (BUF_LEN - 1); i++) {
+		p1.y = floor(scale_y * graph_buff.y[i]);
+		p1.x = floor(scale_x * i);
+		
+		p2.y = floor(scale_y * graph_buff.y[i+1]);
+		p2.x = floor(scale_x * (i+1));
+		
+		line(graph_bmp, p1.x, p1.y, p2.x, p2.y, white);
+	}
+
+	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
+}
+
 void* display_task(void* arg) {
 	//struct Controls action;
 	int i;
@@ -286,7 +336,9 @@ void* agent_task(void* arg) {
 		// need to update agent when crash occured 
 
 		update_car_model();
-
+	
+		// push error from rl optimization to cbuf
+		// should have also the time of pushing
 		deadline_miss(AGENT_ID);
 		wait_for_activation(i);
 	} while (!end);
