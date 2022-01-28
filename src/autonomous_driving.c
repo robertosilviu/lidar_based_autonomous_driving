@@ -1,177 +1,11 @@
-#include <stdio.h>
 #include <stdlib.h>
-#include <allegro.h>
 #include <math.h>
 
+#include "autonomous_driving.h"
 #include "../libs/ptask/ptask.h"
 #include "../libs/tlib/tlib.h"
-/*-----------------------------------------------------------------------------*/
-/*								CONSTANTS									   */
-/*-----------------------------------------------------------------------------*/
-#define PRINTLINE printf("LINE: %d\n", __LINE__)
-#define LEN 50 // length of array of chars
-//-------------------------------GRAPHICS---------------------------------------
-#define WIN_X 1024
-#define WIN_Y 1024
-#define BITS_COL 24
-#define BKG 0
-#define BLACK 0
-#define ASPHALT 7303283
-//#define WHITE 15
+//#include "../libs/qlearn/qlearn.h"
 
-#define SIM_X 800
-#define SIM_Y 800
-#define XCEN_SIM (SIM_X/2)
-#define YCEN_SIM (SIM_Y/2)
-#define SCALE 0.16 // 1px = 0.16m
-#define T_SCALE 0.4
-
-static const char *TRACK_FILE = "img/track_4.tga";
-
-#define INIT_CAR_X 500
-#define INIT_CAR_Y 350
-#define BTM_X INIT_CAR_X // (x,y) coordinates with origin on bottomo left
-#define BTM_Y SIM_Y-INIT_CAR_Y
-#define MAX_THETA 15
-#define MIN_THETA -15
-#define LF 3.0					// car length to front from centre of gravity
-#define LR 2.0					// car length to back from centre of gravity
-#define WD 2.0					// car width
-#define L (LF+LR)
-#define W_PX (L/SCALE)
-#define H_PX (WD/SCALE)
-#define WHEELBASE 4.0
-#define C_R 0.8 				// friction coefficient
-#define C_A 2.0					// aerodynamic coefficient
-#define G 9.8
-#define MAX_A (0.5*G)
-#define MIN_A (-0.5*G)
-#define MAX_V 300.0
-#define MIN_V 0.0
-#define MAX_AGENTS 1
-#define CRASH_DIST 3
-#define INFERENCE 1
-#define TRAINING 0
-//-------------------------------SENSOR--------------------------------------
-#define SMAX 100 // lidar beam max distance
-#define STEP 1 // lidar resolution(m) = 1px
-
-//-------------------------------TASKS---------------------------------------
-#define MAX_TASKS 10
-// handles command interpreter
-#define COM_INTERP_ID 1
-#define COM_INTERP_PRIO 10
-#define COM_INTERP_PER 40	// ms
-#define COM_INTERP_DLR 40
-
-// handles agent state update 
-#define AGENT_ID 2
-#define AGENT_PRIO 40
-#define AGENT_PER 10	// ms
-#define AGENT_DLR 10
-// handles sensors reading
-#define SENSORS_ID 3
-#define SENSORS_PRIO 40
-#define SENSORS_PER 30	// ms
-#define SENSORS_DLR 30
-// handles neural network
-
-// handles graphics 
-#define GRAPHICS_ID 0
-#define GRAPHICS_PRIO 30
-#define GRAPHICS_PER 20	// ms
-#define GRAPHICS_DLR 20
-/*-----------------------------------------------------------------------------*/
-/*								CUSTOM STRUCTURES							   */
-/*-----------------------------------------------------------------------------*/
-// Integer coordinates inside a virtual screen or bitmap
-struct ViewPoint {
-	int x;
-	int y;
-};
-
-struct Lidar {
-	int x;
-	int y;
-	float alpha;
-	int d;
-};
-
-struct Car {
-	float x;
-	float y;
-	float v;
-	//float vx;
-	//float vy;
-	//float a;
-	//float delta;						// steering angle
-	float theta;							// heading angle
-};
-
-struct Controls {
-	float a;
-	float delta;						// steering angle
-};
-
-struct Agent {
-	struct Car car;
-	int alive; // 1 = alive, 0 = dead due to collision with track borders
-	float distance;	// distance raced on track 
-	struct Controls action;
-	// da aggiungere il reward
-};
-
-/*-----------------------------------------------------------------------------*/
-/*								GLOBAL VARIABLES							   */
-/*-----------------------------------------------------------------------------*/
-BITMAP *track_bmp = NULL;
-BITMAP *scene_bmp = NULL;
-
-struct Agent agent;
-struct Agent agents[MAX_AGENTS];
-int end = 0;
-char debug[LEN];
-int mode = TRAINING;
-struct Lidar sensors[MAX_AGENTS][3];
-//---------------------------------------------------------------------------
-// GLOBAL SEMAPHORES
-//---------------------------------------------------------------------------
-pthread_mutex_t			mux_agent, mux_sensors; // define 3 mutex
-
-pthread_mutexattr_t 	matt;			// define mutex attributes
-/*-----------------------------------------------------------------------------*/
-/*								FUNCTION PROTOTYPES							   */
-/*-----------------------------------------------------------------------------*/
-void init();
-void init_agent();
-void init_scene();
-int read_sensor(int x0, int y0, float alpha);
-void get_track_bbox(float *length, float *height);
-void draw_track();
-void draw_car();
-void draw_sensors();
-void refresh_sensors();
-void update_scene();
-
-void update_car_model();
-void update_sensors();
-void* comms_task(void* arg);
-void* display_task(void* arg);
-void* agent_task(void* arg);
-void* sensors_task(void* arg);
-void crash_check();
-void reset_scene();
-//-------------------------------- Reinforcement Learning---------------------
-float action_to_steering(int action_k);
-//--------------------------------UTILS---------------------------------------
-void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
-int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);
-float deg_to_rad(float deg_angle);
-float rad_to_deg(float rad_angle);
-char get_scancode();
-fixed deg_to_fixed(float deg);
-
-void write_debug();
 
 int main() {
 	int ret;
@@ -195,6 +29,7 @@ int main() {
 }
 
 void init() {
+	int w, h;
 	allegro_init();
 	install_keyboard();
 
@@ -212,7 +47,9 @@ void init() {
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
 	// organize app windows
-	//int white = makecol(255, 255, 255);
+	w = WIN_X - SIM_X;
+	h = DMISS_H;
+	deadline_bmp = create_bitmap(w, h);
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
 	init_agent();
 	init_scene();
@@ -423,6 +260,7 @@ void* display_task(void* arg) {
 
 		update_scene();
 		write_debug();
+		show_dmiss();
 
 		wait_for_activation(i);
 	}
@@ -440,6 +278,8 @@ void* agent_task(void* arg) {
 		// need to update agent when crash occured 
 
 		update_car_model();
+
+		deadline_miss(AGENT_ID);
 		wait_for_activation(i);
 	} while (!end);
 
@@ -454,6 +294,8 @@ void* sensors_task(void* arg) {
 
 	do {
 		refresh_sensors();
+
+		deadline_miss(SENSORS_ID);
 		wait_for_activation(i);
 	} while (!end);
 
@@ -524,6 +366,8 @@ void* comms_task(void* arg) {
 			//agents[0].car = car;
 			pthread_mutex_unlock(&mux_agent);
 		}
+
+		deadline_miss(COM_INTERP_ID);
 		wait_for_activation(i);
 	} while (scan != KEY_ESC);
 
@@ -572,6 +416,48 @@ void init_agent() {
 		agents[i].distance = 0.0;
 		agents[i].car = vehicle;
 	}
+}
+
+void show_dmiss() {
+	char debug[LEN];
+	int white, red, dmiss;
+	int x, y;
+
+	dmiss = 0;
+	white = makecol(255, 255, 255);
+	red = makecol(255, 0 , 0);
+	clear_to_color(deadline_bmp, 0);
+
+	sprintf(debug,"Tasks deadline misses");
+	textout_ex(deadline_bmp, font, debug, 10, 10, red, -1);
+
+	// flush array of chars
+	memset(debug, 0, sizeof debug);
+	// get deadline miss of task
+	dmiss = param[COM_INTERP_ID].dmiss;
+	// add the content in the bitmap
+	sprintf(debug,"comms_task: %d", dmiss);
+	textout_ex(deadline_bmp, font, debug, 10, 30, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	deadline_miss(GRAPHICS_ID);
+	dmiss = param[GRAPHICS_ID].dmiss;
+	sprintf(debug,"display_task: %d", dmiss);
+	textout_ex(deadline_bmp, font, debug, 10, 50, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	dmiss = param[SENSORS_ID].dmiss;
+	sprintf(debug,"sensors_task: %d", dmiss);
+	textout_ex(deadline_bmp, font, debug, 10, 70, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	dmiss = param[AGENT_ID].dmiss;
+	sprintf(debug,"agent_task: %d", dmiss);
+	textout_ex(deadline_bmp, font, debug, 10, 90, white, -1);
+
+	x = SIM_X;
+	y = (WIN_Y - DMISS_H);
+	blit(deadline_bmp, screen, 0, 0, x, y, deadline_bmp->w, deadline_bmp->h);
 }
 
 void refresh_sensors() {

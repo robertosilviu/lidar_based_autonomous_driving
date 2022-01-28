@@ -102,3 +102,7 @@ int get_task_period(void* arg) {
 	tpar = (struct Task *)arg;
 	return tpar->period;
 }
+
+int get_task_dmiss(int id) {
+	return param[id].dmiss;
+}
