@@ -121,7 +121,8 @@ struct Agent {
 };
 
 struct cbuf {
-	int top;
+	int head;
+	int tail;
 	int x[BUF_LEN];
 	float y[BUF_LEN];
 };
@@ -143,10 +144,11 @@ int mode = TRAINING;
 struct Lidar sensors[MAX_AGENTS][3];
 
 struct cbuf graph_buff;
+int episode = 0;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
 //---------------------------------------------------------------------------
-pthread_mutex_t			mux_agent, mux_sensors; // define 3 mutex
+pthread_mutex_t			mux_agent, mux_sensors, mux_cbuffer; // define 3 mutex
 
 pthread_mutexattr_t 	matt;			// define mutex attributes
 
@@ -189,5 +191,5 @@ float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
 char get_scancode();
 fixed deg_to_fixed(float deg);
-void push_to_cbuf(float x, float y);
+void push_to_cbuf(int x, float y);
 void write_debug();

@@ -4,7 +4,7 @@
 #include "autonomous_driving.h"
 #include "../libs/ptask/ptask.h"
 #include "../libs/tlib/tlib.h"
-//#include "../libs/qlearn/qlearn.h"
+#include "../libs/qlearn/qlearn.h"
 
 
 int main() {
@@ -43,9 +43,13 @@ void init() {
 	// create 3 semaphores with Priority inheritance protocol
 	pthread_mutex_init(&mux_agent, &matt);
 	pthread_mutex_init(&mux_sensors, &matt);
+	pthread_mutex_init(&mux_cbuffer, &matt);
 
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
+	// initialzie circular buffer
+	graph_buff.head = 0;
+	graph_buff.tail = 0;
 	// organize app windows
 	// graph window
 	w = WIN_X;
@@ -259,28 +263,44 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 }
 
 // needs mutex
-void push_to_cbuf(float x, float y) {
+void push_to_cbuf(int x, float y) {
 	int curr_id;
 
-	curr_id = graph_buff.top;
+	pthread_mutex_lock(&mux_cbuffer);
+
+	curr_id = graph_buff.head;
 	curr_id = (curr_id + 1) % BUF_LEN;
 	// save the data
-	graph_buff.x[curr_id] = curr_id;
+	graph_buff.x[curr_id] = x;
 	graph_buff.y[curr_id] = y;
-	graph_buff.top = curr_id;
+	graph_buff.head = curr_id;
+	//graph_buff.tail = (graph_buff.tail + 1) % BUF_LEN;
+
+	pthread_mutex_unlock(&mux_cbuffer);
 }
 
 void show_rl_graph() {
-	int px_h, px_w, white;
+	int px_h, px_w, white, orange;
+	int shift_y_axis = 50;
+	int shift_x_axis = 500;
+	int x_offset = 50;
 	struct ViewPoint p1, p2;
-	int i;	// used for for cycle
-	float scale_y, scale_x, g_h;
+	int i, index;	// used for for cycle
+	float scale_y, scale_x, g_h, value;
+	char debug[LEN];
 	// it needs a mutex for buffer access
-	px_h = GRAPH_H;
-	px_w = GRAPH_W;
-	white = makecol(255,255,255);
-	clear_to_color(graph_bmp, 0);
+	px_h = graph_bmp->h - shift_y_axis;
+	px_w = graph_bmp->w - shift_x_axis - x_offset;
 
+	white = makecol(255,255,255);
+	orange = makecol(255,99,71);
+	clear_to_color(graph_bmp, 0);
+	// draw axes
+	line(graph_bmp, x_offset, px_h, px_w, px_h, white);	// x
+	line(graph_bmp, x_offset, px_h, x_offset, 0, white);			// y
+
+	pthread_mutex_lock(&mux_cbuffer);
+	// get max elem of buffer
 	for(i =0; i < BUF_LEN; i++) {
 		if(graph_buff.y[i] > g_h)
 			g_h = graph_buff.y[i];
@@ -291,15 +311,44 @@ void show_rl_graph() {
 	scale_x = px_w/BUF_LEN; // amount of pixel for 1 unit of buffer
 
 	for(i = 0; i < (BUF_LEN - 1); i++) {
-		p1.y = floor(scale_y * graph_buff.y[i]);
-		p1.x = floor(scale_x * i);
-		
-		p2.y = floor(scale_y * graph_buff.y[i+1]);
-		p2.x = floor(scale_x * (i+1));
-		
-		line(graph_bmp, p1.x, p1.y, p2.x, p2.y, white);
-	}
+		index = graph_buff.tail + i;
+		value = graph_buff.y[index];
+		p1.y = px_h - floor(value/scale_y);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"%.2f", value);
+		textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
 
+		p1.x = (x_offset + scale_x * i);
+		//printf(" x is: %d \n", graph_buff.x[index]);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"ep: %d", graph_buff.x[index]);
+		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
+
+		index = (index + 1) % BUF_LEN;
+		value = graph_buff.y[index];
+		p2.y = px_h - floor(value/scale_y);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"%.2f", value);
+		textout_ex(graph_bmp, font, debug, 0, p2.y, white, -1);
+
+		p2.x = (x_offset + scale_x * (i+1));
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"ep: %d", graph_buff.x[index]);
+		textout_ex(graph_bmp, font, debug, p2.x, px_h+5, white, -1);
+		
+		line(graph_bmp, p1.x, p1.y, p2.x, p2.y, orange);
+
+		line(graph_bmp, p1.x, px_h, p1.x, px_h -8, white);
+		line(graph_bmp, p2.x, px_h, p2.x, px_h -8, white);
+
+		line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
+		line(graph_bmp, x_offset, p2.y, x_offset + 8, p2.y, white);
+
+	}
+	// update buffer tail 
+	graph_buff.tail = (graph_buff.tail + BUF_LEN) % BUF_LEN;
+
+	pthread_mutex_unlock(&mux_cbuffer);
 	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
 }
 
@@ -319,6 +368,7 @@ void* display_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
+		show_rl_graph();
 
 		wait_for_activation(i);
 	}
@@ -328,7 +378,7 @@ void* display_task(void* arg) {
 
 void* agent_task(void* arg) {
 	int i;
-
+	float test = 0.0;
 	i = get_task_index(arg);
 	set_activation(i);
 
@@ -339,6 +389,10 @@ void* agent_task(void* arg) {
 	
 		// push error from rl optimization to cbuf
 		// should have also the time of pushing
+		test = frand(0, 300);
+		push_to_cbuf(episode, test);
+		episode = (episode + 1) % 500;
+
 		deadline_miss(AGENT_ID);
 		wait_for_activation(i);
 	} while (!end);
