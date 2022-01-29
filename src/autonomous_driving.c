@@ -286,7 +286,7 @@ void show_rl_graph() {
 	int x_offset = 50;
 	struct ViewPoint p1, p2;
 	int i, index;	// used for for cycle
-	float scale_y, scale_x, g_h, value;
+	float scale_y, scale_x, g_h;
 	char debug[LEN];
 	// it needs a mutex for buffer access
 	px_h = graph_bmp->h - shift_y_axis;
@@ -312,23 +312,20 @@ void show_rl_graph() {
 
 	for(i = 0; i < (BUF_LEN - 1); i++) {
 		index = graph_buff.tail + i;
-		value = graph_buff.y[index];
-		p1.y = px_h - floor(value/scale_y);
+		p1.y = px_h - floor(graph_buff.y[index]/scale_y);
 		memset(debug, 0, sizeof debug);
-		sprintf(debug,"%.2f", value);
+		sprintf(debug,"%.2f", graph_buff.y[index]);
 		textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
 
 		p1.x = (x_offset + scale_x * i);
-		//printf(" x is: %d \n", graph_buff.x[index]);
 		memset(debug, 0, sizeof debug);
 		sprintf(debug,"ep: %d", graph_buff.x[index]);
 		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
 
 		index = (index + 1) % BUF_LEN;
-		value = graph_buff.y[index];
-		p2.y = px_h - floor(value/scale_y);
+		p2.y = px_h - floor(graph_buff.y[index]/scale_y);
 		memset(debug, 0, sizeof debug);
-		sprintf(debug,"%.2f", value);
+		sprintf(debug,"%.2f", graph_buff.y[index]);
 		textout_ex(graph_bmp, font, debug, 0, p2.y, white, -1);
 
 		p2.x = (x_offset + scale_x * (i+1));
@@ -337,10 +334,9 @@ void show_rl_graph() {
 		textout_ex(graph_bmp, font, debug, p2.x, px_h+5, white, -1);
 		
 		line(graph_bmp, p1.x, p1.y, p2.x, p2.y, orange);
-
+		// draw small lines on values index on x and y
 		line(graph_bmp, p1.x, px_h, p1.x, px_h -8, white);
 		line(graph_bmp, p2.x, px_h, p2.x, px_h -8, white);
-
 		line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
 		line(graph_bmp, x_offset, p2.y, x_offset + 8, p2.y, white);
 
