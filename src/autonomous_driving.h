@@ -145,6 +145,7 @@ struct Lidar sensors[MAX_AGENTS][3];
 
 struct cbuf graph_buff;
 int episode = 0;
+int graph_index = 0;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
 //---------------------------------------------------------------------------
@@ -192,4 +193,5 @@ float rad_to_deg(float rad_angle);
 char get_scancode();
 fixed deg_to_fixed(float deg);
 void push_to_cbuf(int x, float y);
+int is_cbuff_empty();
 void write_debug();

@@ -29,7 +29,7 @@ int main() {
 }
 
 void init() {
-	int w, h;
+	int w, h, i;
 	allegro_init();
 	install_keyboard();
 
@@ -48,8 +48,12 @@ void init() {
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
 	// initialzie circular buffer
-	graph_buff.head = 0;
-	graph_buff.tail = 0;
+	graph_buff.head = -1;
+	graph_buff.tail = -1;
+	for(i = 0; i < BUF_LEN; i++) {
+		graph_buff.x[i] = 0;
+		graph_buff.y[i] = 0.0;
+	}
 	// organize app windows
 	// graph window
 	w = WIN_X;
@@ -262,23 +266,35 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	return 0;
 }
 
+int is_cbuff_empty() {
+	if (graph_buff.tail == graph_buff.head)
+		return 1;
+	return 0;
+}
 // needs mutex
 void push_to_cbuf(int x, float y) {
 	int curr_id;
 
 	pthread_mutex_lock(&mux_cbuffer);
-
+	
 	curr_id = graph_buff.head;
 	curr_id = (curr_id + 1) % BUF_LEN;
 	// save the data
 	graph_buff.x[curr_id] = x;
 	graph_buff.y[curr_id] = y;
 	graph_buff.head = curr_id;
+	// update tail when overwritting the oldest element of buffer
+	if(graph_buff.tail == graph_buff.head) {
+		graph_buff.tail = (graph_buff.tail + 1) % BUF_LEN;
+	}
+	// initialize tail after adding first element
+	if(graph_buff.tail == -1)
+		graph_buff.tail = 0;
 	//graph_buff.tail = (graph_buff.tail + 1) % BUF_LEN;
-
+	//printf("adding: %d, %f \n", x, y);
 	pthread_mutex_unlock(&mux_cbuffer);
 }
-
+/*
 void show_rl_graph() {
 	int px_h, px_w, white, orange;
 	int shift_y_axis = 50;
@@ -347,7 +363,64 @@ void show_rl_graph() {
 	pthread_mutex_unlock(&mux_cbuffer);
 	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
 }
+*/
+void show_rl_graph() {
+	int px_h, px_w, white, orange;
+	int shift_y_axis = 50;
+	int shift_x_axis = 500;
+	int x_offset = 50;
+	int r = 3;
+	struct ViewPoint p1;
+	int i, index;	// used for for cycle
+	float scale_y, scale_x, g_h;
+	char debug[LEN];
+	// it needs a mutex for buffer access
+	px_h = graph_bmp->h - shift_y_axis;
+	px_w = graph_bmp->w - shift_x_axis - x_offset;
 
+	white = makecol(255,255,255);
+	orange = makecol(255,99,71);
+	clear_to_color(graph_bmp, 0);
+	// draw axes
+	line(graph_bmp, x_offset, px_h, px_w, px_h, white);	// x
+	line(graph_bmp, x_offset, px_h, x_offset, 0, white);			// y
+
+	pthread_mutex_lock(&mux_cbuffer);
+	// get max elem of buffer
+	for(i = 0; i < BUF_LEN; i++) {
+		if(graph_buff.y[i] > g_h)
+			g_h = graph_buff.y[i];
+	}
+
+	// find scale based on max value stored in buffer
+	scale_y = (float)g_h/px_h;
+	scale_x = px_w/(BUF_LEN+1); // amount of pixel for 1 unit of buffer
+
+	//i = 1;
+	while (is_cbuff_empty() != 1) {
+		index = graph_buff.tail;
+		p1.y = px_h - floor(graph_buff.y[index]/scale_y);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"%.2f", graph_buff.y[index]);
+		textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
+
+		p1.x = (x_offset + scale_x * graph_index);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"ep: %d", graph_buff.x[index]);
+		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
+		
+		circlefill(graph_bmp, p1.x, p1.y, r, orange);
+		line(graph_bmp, p1.x, px_h, p1.x, px_h -8, white);
+		line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
+
+		//printf("reading: %d, %f \n", graph_buff.x[index], graph_buff.y[index]); 
+		graph_buff.tail = (graph_buff.tail + 1) % BUF_LEN;
+		graph_index = (graph_index + 1) % BUF_LEN;
+	}
+
+	pthread_mutex_unlock(&mux_cbuffer);
+	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
+}
 void* display_task(void* arg) {
 	//struct Controls action;
 	int i;
