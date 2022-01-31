@@ -30,5 +30,5 @@ int		wait_for_task(int i);
 int		deadline_miss(int i);
 int		get_task_index(void* arg);
 int		get_task_period(void* arg);
-
+int		get_task_dmiss(int id);
 #endif /* PTASK_H_ */

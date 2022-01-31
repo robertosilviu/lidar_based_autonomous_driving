@@ -1,177 +1,11 @@
-#include <stdio.h>
 #include <stdlib.h>
-#include <allegro.h>
 #include <math.h>
 
+#include "autonomous_driving.h"
 #include "../libs/ptask/ptask.h"
 #include "../libs/tlib/tlib.h"
-/*-----------------------------------------------------------------------------*/
-/*								CONSTANTS									   */
-/*-----------------------------------------------------------------------------*/
-#define PRINTLINE printf("LINE: %d\n", __LINE__)
-#define LEN 50 // length of array of chars
-//-------------------------------GRAPHICS---------------------------------------
-#define WIN_X 1024
-#define WIN_Y 1024
-#define BITS_COL 24
-#define BKG 0
-#define BLACK 0
-#define ASPHALT 7303283
-//#define WHITE 15
+#include "../libs/qlearn/qlearn.h"
 
-#define SIM_X 800
-#define SIM_Y 800
-#define XCEN_SIM (SIM_X/2)
-#define YCEN_SIM (SIM_Y/2)
-#define SCALE 0.16 // 1px = 0.16m
-#define T_SCALE 0.4
-
-static const char *TRACK_FILE = "img/track_4.tga";
-
-#define INIT_CAR_X 500
-#define INIT_CAR_Y 350
-#define BTM_X INIT_CAR_X // (x,y) coordinates with origin on bottomo left
-#define BTM_Y SIM_Y-INIT_CAR_Y
-#define MAX_THETA 15
-#define MIN_THETA -15
-#define LF 3.0					// car length to front from centre of gravity
-#define LR 2.0					// car length to back from centre of gravity
-#define WD 2.0					// car width
-#define L (LF+LR)
-#define W_PX (L/SCALE)
-#define H_PX (WD/SCALE)
-#define WHEELBASE 4.0
-#define C_R 0.8 				// friction coefficient
-#define C_A 2.0					// aerodynamic coefficient
-#define G 9.8
-#define MAX_A (0.5*G)
-#define MIN_A (-0.5*G)
-#define MAX_V 300.0
-#define MIN_V 0.0
-#define MAX_AGENTS 1
-#define CRASH_DIST 3
-#define INFERENCE 1
-#define TRAINING 0
-//-------------------------------SENSOR--------------------------------------
-#define SMAX 100 // lidar beam max distance
-#define STEP 1 // lidar resolution(m) = 1px
-
-//-------------------------------TASKS---------------------------------------
-#define MAX_TASKS 10
-// handles command interpreter
-#define COM_INTERP_ID 1
-#define COM_INTERP_PRIO 10
-#define COM_INTERP_PER 40	// ms
-#define COM_INTERP_DLR 40
-
-// handles agent state update 
-#define AGENT_ID 2
-#define AGENT_PRIO 40
-#define AGENT_PER 10	// ms
-#define AGENT_DLR 10
-// handles sensors reading
-#define SENSORS_ID 3
-#define SENSORS_PRIO 40
-#define SENSORS_PER 30	// ms
-#define SENSORS_DLR 30
-// handles neural network
-
-// handles graphics 
-#define GRAPHICS_ID 0
-#define GRAPHICS_PRIO 30
-#define GRAPHICS_PER 20	// ms
-#define GRAPHICS_DLR 20
-/*-----------------------------------------------------------------------------*/
-/*								CUSTOM STRUCTURES							   */
-/*-----------------------------------------------------------------------------*/
-// Integer coordinates inside a virtual screen or bitmap
-struct ViewPoint {
-	int x;
-	int y;
-};
-
-struct Lidar {
-	int x;
-	int y;
-	float alpha;
-	int d;
-};
-
-struct Car {
-	float x;
-	float y;
-	float v;
-	//float vx;
-	//float vy;
-	//float a;
-	//float delta;						// steering angle
-	float theta;							// heading angle
-};
-
-struct Controls {
-	float a;
-	float delta;						// steering angle
-};
-
-struct Agent {
-	struct Car car;
-	int alive; // 1 = alive, 0 = dead due to collision with track borders
-	float distance;	// distance raced on track 
-	struct Controls action;
-	// da aggiungere il reward
-};
-
-/*-----------------------------------------------------------------------------*/
-/*								GLOBAL VARIABLES							   */
-/*-----------------------------------------------------------------------------*/
-BITMAP *track_bmp = NULL;
-BITMAP *scene_bmp = NULL;
-
-struct Agent agent;
-struct Agent agents[MAX_AGENTS];
-int end = 0;
-char debug[LEN];
-int mode = TRAINING;
-struct Lidar sensors[MAX_AGENTS][3];
-//---------------------------------------------------------------------------
-// GLOBAL SEMAPHORES
-//---------------------------------------------------------------------------
-pthread_mutex_t			mux_agent, mux_sensors; // define 3 mutex
-
-pthread_mutexattr_t 	matt;			// define mutex attributes
-/*-----------------------------------------------------------------------------*/
-/*								FUNCTION PROTOTYPES							   */
-/*-----------------------------------------------------------------------------*/
-void init();
-void init_agent();
-void init_scene();
-int read_sensor(int x0, int y0, float alpha);
-void get_track_bbox(float *length, float *height);
-void draw_track();
-void draw_car();
-void draw_sensors();
-void refresh_sensors();
-void update_scene();
-
-void update_car_model();
-void update_sensors();
-void* comms_task(void* arg);
-void* display_task(void* arg);
-void* agent_task(void* arg);
-void* sensors_task(void* arg);
-void crash_check();
-void reset_scene();
-//-------------------------------- Reinforcement Learning---------------------
-float action_to_steering(int action_k);
-//--------------------------------UTILS---------------------------------------
-void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
-int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);
-float deg_to_rad(float deg_angle);
-float rad_to_deg(float rad_angle);
-char get_scancode();
-fixed deg_to_fixed(float deg);
-
-void write_debug();
 
 int main() {
 	int ret;
@@ -195,6 +29,7 @@ int main() {
 }
 
 void init() {
+	int w, h, i;
 	allegro_init();
 	install_keyboard();
 
@@ -208,12 +43,32 @@ void init() {
 	// create 3 semaphores with Priority inheritance protocol
 	pthread_mutex_init(&mux_agent, &matt);
 	pthread_mutex_init(&mux_sensors, &matt);
+	pthread_mutex_init(&mux_cbuffer, &matt);
 
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
+	// initialzie circular buffer
+	graph_buff.head = -1;
+	graph_buff.tail = -1;
+	for(i = 0; i < BUF_LEN; i++) {
+		graph_buff.x[i] = 0;
+		graph_buff.y[i] = 0.0;
+	}
 	// organize app windows
-	//int white = makecol(255, 255, 255);
+	// graph window
+	w = WIN_X;
+	h = WIN_Y - SIM_Y;
+	graph_bmp = create_bitmap(w, h);
+	// deadline window
+	w = WIN_X - SIM_X;
+	h = DMISS_H;
+	deadline_bmp = create_bitmap(w, h);
+	// debug window
+	w = WIN_X - SIM_X;
+	h = SIM_Y - DMISS_H;
+	debug_bmp = create_bitmap(w, h);
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
+	// track window
 	init_agent();
 	init_scene();
 	refresh_sensors();
@@ -410,6 +265,162 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	// pixel of provided color not found
 	return 0;
 }
+
+int is_cbuff_empty() {
+	if (graph_buff.tail == graph_buff.head)
+		return 1;
+	return 0;
+}
+// needs mutex
+void push_to_cbuf(int x, float y) {
+	int curr_id;
+
+	pthread_mutex_lock(&mux_cbuffer);
+	
+	curr_id = graph_buff.head;
+	curr_id = (curr_id + 1) % BUF_LEN;
+	// save the data
+	graph_buff.x[curr_id] = x;
+	graph_buff.y[curr_id] = y;
+	graph_buff.head = curr_id;
+	// update tail when overwritting the oldest element of buffer
+	if(graph_buff.tail == graph_buff.head) {
+		graph_buff.tail = (graph_buff.tail + 1) % BUF_LEN;
+	}
+	// initialize tail after adding first element
+	if(graph_buff.tail == -1)
+		graph_buff.tail = 0;
+	//graph_buff.tail = (graph_buff.tail + 1) % BUF_LEN;
+	//printf("adding: %d, %f \n", x, y);
+	pthread_mutex_unlock(&mux_cbuffer);
+}
+/*
+void show_rl_graph() {
+	int px_h, px_w, white, orange;
+	int shift_y_axis = 50;
+	int shift_x_axis = 500;
+	int x_offset = 50;
+	struct ViewPoint p1, p2;
+	int i, index;	// used for for cycle
+	float scale_y, scale_x, g_h;
+	char debug[LEN];
+	// it needs a mutex for buffer access
+	px_h = graph_bmp->h - shift_y_axis;
+	px_w = graph_bmp->w - shift_x_axis - x_offset;
+
+	white = makecol(255,255,255);
+	orange = makecol(255,99,71);
+	clear_to_color(graph_bmp, 0);
+	// draw axes
+	line(graph_bmp, x_offset, px_h, px_w, px_h, white);	// x
+	line(graph_bmp, x_offset, px_h, x_offset, 0, white);			// y
+
+	pthread_mutex_lock(&mux_cbuffer);
+	// get max elem of buffer
+	for(i =0; i < BUF_LEN; i++) {
+		if(graph_buff.y[i] > g_h)
+			g_h = graph_buff.y[i];
+	}
+
+	// find scale based on max value stored in buffer
+	scale_y = (float)g_h/px_h;
+	scale_x = px_w/BUF_LEN; // amount of pixel for 1 unit of buffer
+
+	for(i = 0; i < (BUF_LEN - 1); i++) {
+		index = graph_buff.tail + i;
+		p1.y = px_h - floor(graph_buff.y[index]/scale_y);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"%.2f", graph_buff.y[index]);
+		textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
+
+		p1.x = (x_offset + scale_x * i);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"ep: %d", graph_buff.x[index]);
+		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
+
+		index = (index + 1) % BUF_LEN;
+		p2.y = px_h - floor(graph_buff.y[index]/scale_y);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"%.2f", graph_buff.y[index]);
+		textout_ex(graph_bmp, font, debug, 0, p2.y, white, -1);
+
+		p2.x = (x_offset + scale_x * (i+1));
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"ep: %d", graph_buff.x[index]);
+		textout_ex(graph_bmp, font, debug, p2.x, px_h+5, white, -1);
+		
+		line(graph_bmp, p1.x, p1.y, p2.x, p2.y, orange);
+		// draw small lines on values index on x and y
+		line(graph_bmp, p1.x, px_h, p1.x, px_h -8, white);
+		line(graph_bmp, p2.x, px_h, p2.x, px_h -8, white);
+		line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
+		line(graph_bmp, x_offset, p2.y, x_offset + 8, p2.y, white);
+
+	}
+	// update buffer tail 
+	graph_buff.tail = (graph_buff.tail + BUF_LEN) % BUF_LEN;
+
+	pthread_mutex_unlock(&mux_cbuffer);
+	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
+}
+*/
+void show_rl_graph() {
+	int px_h, px_w, white, orange;
+	int shift_y_axis = 50;
+	int shift_x_axis = 500;
+	int x_offset = 50;
+	int r = 3;
+	struct ViewPoint p1;
+	int i, index;	// used for for cycle
+	float scale_y, scale_x, g_h;
+	char debug[LEN];
+	// it needs a mutex for buffer access
+	px_h = graph_bmp->h - shift_y_axis;
+	px_w = graph_bmp->w - shift_x_axis - x_offset;
+
+	white = makecol(255,255,255);
+	orange = makecol(255,99,71);
+	clear_to_color(graph_bmp, 0);
+	// draw axes
+	line(graph_bmp, x_offset, px_h, px_w, px_h, white);	// x
+	line(graph_bmp, x_offset, px_h, x_offset, 0, white);			// y
+
+	pthread_mutex_lock(&mux_cbuffer);
+	// get max elem of buffer
+	for(i = 0; i < BUF_LEN; i++) {
+		if(graph_buff.y[i] > g_h)
+			g_h = graph_buff.y[i];
+	}
+
+	// find scale based on max value stored in buffer
+	scale_y = (float)g_h/px_h;
+	scale_x = px_w/(BUF_LEN+1); // amount of pixel for 1 unit of buffer
+
+	//i = 1;
+	while (is_cbuff_empty() != 1) {
+		index = graph_buff.tail;
+		p1.y = px_h - floor(graph_buff.y[index]/scale_y);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"%.2f", graph_buff.y[index]);
+		textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
+
+		p1.x = (x_offset + scale_x * graph_index);
+		memset(debug, 0, sizeof debug);
+		sprintf(debug,"ep: %d", graph_buff.x[index]);
+		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
+		
+		circlefill(graph_bmp, p1.x, p1.y, r, orange);
+		line(graph_bmp, p1.x, px_h, p1.x, px_h -8, white);
+		line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
+
+		//printf("reading: %d, %f \n", graph_buff.x[index], graph_buff.y[index]); 
+		graph_buff.tail = (graph_buff.tail + 1) % BUF_LEN;
+		graph_index = (graph_index + 1) % BUF_LEN;
+	}
+
+	pthread_mutex_unlock(&mux_cbuffer);
+	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
+}
 void* display_task(void* arg) {
 	//struct Controls action;
 	int i;
@@ -422,7 +433,11 @@ void* display_task(void* arg) {
 		//action.delta = 0;
 
 		update_scene();
+
+		clear_to_color(debug_bmp, 0);
 		write_debug();
+		show_dmiss();
+		show_rl_graph();
 
 		wait_for_activation(i);
 	}
@@ -432,7 +447,7 @@ void* display_task(void* arg) {
 
 void* agent_task(void* arg) {
 	int i;
-
+	float test = 0.0;
 	i = get_task_index(arg);
 	set_activation(i);
 
@@ -440,6 +455,14 @@ void* agent_task(void* arg) {
 		// need to update agent when crash occured 
 
 		update_car_model();
+	
+		// push error from rl optimization to cbuf
+		// should have also the time of pushing
+		test = frand(0, 300);
+		push_to_cbuf(episode, test);
+		episode = (episode + 1) % 500;
+
+		deadline_miss(AGENT_ID);
 		wait_for_activation(i);
 	} while (!end);
 
@@ -454,6 +477,8 @@ void* sensors_task(void* arg) {
 
 	do {
 		refresh_sensors();
+
+		deadline_miss(SENSORS_ID);
 		wait_for_activation(i);
 	} while (!end);
 
@@ -524,6 +549,8 @@ void* comms_task(void* arg) {
 			//agents[0].car = car;
 			pthread_mutex_unlock(&mux_agent);
 		}
+
+		deadline_miss(COM_INTERP_ID);
 		wait_for_activation(i);
 	} while (scan != KEY_ESC);
 
@@ -572,6 +599,48 @@ void init_agent() {
 		agents[i].distance = 0.0;
 		agents[i].car = vehicle;
 	}
+}
+
+void show_dmiss() {
+	char debug[LEN];
+	int white, red, dmiss;
+	int x, y;
+
+	dmiss = 0;
+	white = makecol(255, 255, 255);
+	red = makecol(255, 0 , 0);
+	clear_to_color(deadline_bmp, 0);
+
+	sprintf(debug,"Tasks deadline misses");
+	textout_ex(deadline_bmp, font, debug, 10, 10, red, -1);
+
+	// flush array of chars
+	memset(debug, 0, sizeof debug);
+	// get deadline miss of task
+	dmiss = param[COM_INTERP_ID].dmiss;
+	// add the content in the bitmap
+	sprintf(debug,"comms_task: %d", dmiss);
+	textout_ex(deadline_bmp, font, debug, 10, 30, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	deadline_miss(GRAPHICS_ID);
+	dmiss = param[GRAPHICS_ID].dmiss;
+	sprintf(debug,"display_task: %d", dmiss);
+	textout_ex(deadline_bmp, font, debug, 10, 50, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	dmiss = param[SENSORS_ID].dmiss;
+	sprintf(debug,"sensors_task: %d", dmiss);
+	textout_ex(deadline_bmp, font, debug, 10, 70, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	dmiss = param[AGENT_ID].dmiss;
+	sprintf(debug,"agent_task: %d", dmiss);
+	textout_ex(deadline_bmp, font, debug, 10, 90, white, -1);
+
+	x = SIM_X;
+	y = (WIN_Y - DMISS_H);
+	blit(deadline_bmp, screen, 0, 0, x, y, deadline_bmp->w, deadline_bmp->h);
 }
 
 void refresh_sensors() {
@@ -701,39 +770,50 @@ void update_car_model() {
 
 void write_debug() {
 	int white;
-	int y, y_max;
-
-	// refresh data on screen
-	y_max = 70;
-	for(y = 20; y <= y_max; y+=10) {
-		textout_ex(screen, font, debug, 10, y, BLACK, BLACK);
-	}
-
+	int x, y;
+	struct Agent agent;
+	
+	x = 0;
 	white = makecol(255,255,255);
+	clear_to_color(debug_bmp, 0);
 
 	pthread_mutex_lock(&mux_agent);
-	sprintf(debug,"x: %f", agents[0].car.x);
-	textout_ex(screen, font, debug, 10, 20, white, -1);
-
-	sprintf(debug,"y: %f", agents[0].car.y);
-	textout_ex(screen, font, debug, 10, 30, white, -1);
-
-	sprintf(debug,"v: %f", agents[0].car.v);
-	textout_ex(screen, font, debug, 10, 40, white, -1);
-
-	sprintf(debug,"theta: %f", rad_to_deg(agents[0].car.theta));
-	textout_ex(screen, font, debug, 10, 50, white, -1);
-
-	sprintf(debug,"act.a: %f", agents[0].action.a);
-	textout_ex(screen, font, debug, 10, 60, white, -1);
-
-	sprintf(debug,"act.delta: %f", agents[0].action.delta);
-	textout_ex(screen, font, debug, 10, 70, white, -1);
-
-	sprintf(debug,"alive: %d", agents[0].alive);
-	textout_ex(screen, font, debug, 10, 80, white, -1);
-
+	agent = agents[0];
 	pthread_mutex_unlock(&mux_agent);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"x: %f", agent.car.x);
+	textout_ex(debug_bmp, font, debug, x, 20, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"y: %f", agent.car.y);
+	textout_ex(debug_bmp, font, debug, x, 30, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"v: %f", agent.car.v);
+	textout_ex(debug_bmp, font, debug, x, 40, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"theta: %f", rad_to_deg(agent.car.theta));
+	textout_ex(debug_bmp, font, debug, x, 50, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"act.a: %f", agent.action.a);
+	textout_ex(debug_bmp, font, debug, x, 60, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"act.delta: %f", agent.action.delta);
+	textout_ex(debug_bmp, font, debug, x, 70, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"alive: %d", agent.alive);
+	textout_ex(debug_bmp, font, debug, x, 80, white, -1);
+
+	//pthread_mutex_unlock(&mux_agent);
+
+	x = SIM_X;
+	y = (WIN_Y - SIM_Y + 50);
+	blit(debug_bmp, screen, 0, 0, x, y, debug_bmp->w, debug_bmp->h);
 }
 
 float action_to_steering(int action_k) {
