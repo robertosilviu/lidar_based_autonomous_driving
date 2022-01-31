@@ -1,10 +1,10 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "autonomous_driving.h"
 #include "../libs/ptask/ptask.h"
 #include "../libs/tlib/tlib.h"
 #include "../libs/qlearn/qlearn.h"
+#include "autonomous_driving.h"
 
 
 int main() {
@@ -70,6 +70,7 @@ void init() {
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
 	// track window
 	init_agent();
+	//init_qlearn_params();
 	init_scene();
 	refresh_sensors();
 	update_scene();
@@ -230,7 +231,7 @@ void crash_check() {
 		
 		if( dead_agents[i] == 1) {
 			agents[i].alive = 0;
-			agents[i].car = new_car;
+			//agents[i].car = new_car;
 			// at each restart the agent should change some parameters for the next simulation
 		}
 	}
@@ -245,7 +246,7 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 		max_y = (y1 > y0) ? y1 : y0;
 		min_y = (y1 < y0) ? y1 : y0;
 		for(j = min_y; j < max_y; j++) {
-			col = getpixel(scene_bmp, x0, j);
+			col = getpixel(track_bmp, x0, j);
 			if(col == color)
 				return 1;
 		}
@@ -257,7 +258,7 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 		for(j = min_x; j < max_x; j++) {
 			x = j;
 			y = (int)(m * x) + b;
-			col = getpixel(scene_bmp, x, y);
+			col = getpixel(track_bmp, x, y);
 			if(col == color)
 				return 1;
 		}
@@ -447,20 +448,37 @@ void* display_task(void* arg) {
 
 void* agent_task(void* arg) {
 	int i;
-	float test = 0.0;
+	float progress = 0.0;
+	struct Car new_car;
+
 	i = get_task_index(arg);
 	set_activation(i);
 
-	do {	
-		// need to update agent when crash occured 
+	// initialize empty car to reset dead agent's car
+	new_car.v = 0.0;
+	new_car.x = 0.0;
+	new_car.y = 0.0;
+	new_car.theta = 0.0;
 
-		update_car_model();
-	
-		// push error from rl optimization to cbuf
-		// should have also the time of pushing
-		test = frand(0, 300);
-		push_to_cbuf(episode, test);
-		episode = (episode + 1) % 500;
+	do {	
+		// need to update agent when crash occured
+		for(i = 0; i < MAX_AGENTS; i++) {
+			if (mode == TRAINING)
+				progress = learn_to_drive(i);
+			else if ( mode == INFERENCE)
+				printf("Should do inference here\n");
+			// push error from rl optimization to cbuf
+			// should have also the time of pushing
+			push_to_cbuf(episode, progress);
+			// reset dead agent
+			pthread_mutex_lock(&mux_agent);
+			if (agents[i].alive == 0) {
+				agents[i].alive = 1;
+				agents[i].car = new_car;
+			}
+			pthread_mutex_unlock(&mux_agent);
+
+		}
 
 		deadline_miss(AGENT_ID);
 		wait_for_activation(i);
@@ -712,7 +730,7 @@ int read_sensor(int x0, int y0, float alpha) {
 	return d;
 }
 
-void update_car_model() {
+struct Car update_car_model(struct Controls a, struct Car curr_state) {
 	struct Car old_state, new_state;
 	struct Controls act;
 	float vx, vy, dt;
@@ -721,51 +739,51 @@ void update_car_model() {
 	float norm_theta;
 	int i;
 
-	pthread_mutex_lock(&mux_agent);
+	//pthread_mutex_lock(&mux_agent);
 	//dt = T_SCALE * (float)AGENT_PER/1000;
 	dt = (float)AGENT_PER/1000;
-	for(i = 0; i < MAX_AGENTS; i++) {
-		old_state = agents[i].car;
-		act = agents[i].action;
+	//for(i = 0; i < MAX_AGENTS; i++) {
+	old_state = curr_state;
+	act = a;
 
-		// CENTRE OF MASS
-		/*
-		old_state.v = old_state.v + act.a*dt;
-		beta = atan2(LR*tan(act.delta), L);
-		r = L/( (tan(act.delta)*cos(beta)) );
-		omega = old_state.v/r;
+	// CENTRE OF MASS
+	/*
+	old_state.v = old_state.v + act.a*dt;
+	beta = atan2(LR*tan(act.delta), L);
+	r = L/( (tan(act.delta)*cos(beta)) );
+	omega = old_state.v/r;
 
-		vx = old_state.v*cos(old_state.theta+beta);
-		vy = old_state.v*sin(old_state.theta+beta);
-		new_state.x = old_state.x + (vx*dt);
-		//printf("vx is: %f\n", vx*dt);
-		new_state.y = old_state.y + (vy*dt);
-		new_state.theta = old_state.theta + (omega*dt);
-		//printf("new theta is %f \n", new_state.theta);
-		//new_state.v = old_state.v + act.a*dt; // to be checked
-		new_state.v = old_state.v;
-		//new_state.a = old_state.a;
-		// assuming constant velocity 
-		// if acceleration is present, the velocity must be updated too
-		agent.car = new_state;
-		*/
+	vx = old_state.v*cos(old_state.theta+beta);
+	vy = old_state.v*sin(old_state.theta+beta);
+	new_state.x = old_state.x + (vx*dt);
+	//printf("vx is: %f\n", vx*dt);
+	new_state.y = old_state.y + (vy*dt);
+	new_state.theta = old_state.theta + (omega*dt);
+	//printf("new theta is %f \n", new_state.theta);
+	//new_state.v = old_state.v + act.a*dt; // to be checked
+	new_state.v = old_state.v;
+	//new_state.a = old_state.a;
+	// assuming constant velocity 
+	// if acceleration is present, the velocity must be updated too
+	agent.car = new_state;
+	*/
 
-		//printf(" new v: %f, theta: %f, delta: %d\n", new_state.v, new_state.theta, act.delta);
+	//printf(" new v: %f, theta: %f, delta: %d\n", new_state.v, new_state.theta, act.delta);
 
-		// REAR AXEL 
-		//friction = old_state.v * (C_R + C_A * old_state.v);
-		new_state.v = old_state.v + dt * (act.a); // - friction);
-		norm_theta = atan2(sin(old_state.theta), cos(old_state.theta));
-		vx = old_state.v*cos(norm_theta);
-		vy = old_state.v*sin(norm_theta);
-		omega = old_state.v * tan(act.delta) / WHEELBASE;
-		new_state.x = old_state.x + (vx * dt);
-		new_state.y = old_state.y + (vy * dt);
-		new_state.theta = norm_theta + (omega * dt);
+	// REAR AXEL 
+	//friction = old_state.v * (C_R + C_A * old_state.v);
+	new_state.v = old_state.v + dt * (act.a); // - friction);
+	norm_theta = atan2(sin(old_state.theta), cos(old_state.theta));
+	vx = old_state.v*cos(norm_theta);
+	vy = old_state.v*sin(norm_theta);
+	omega = old_state.v * tan(act.delta) / WHEELBASE;
+	new_state.x = old_state.x + (vx * dt);
+	new_state.y = old_state.y + (vy * dt);
+	new_state.theta = norm_theta + (omega * dt);
 
-		agents[i].car = new_state;
-	}
-	pthread_mutex_unlock(&mux_agent);
+	return new_state;
+	//}
+	//pthread_mutex_unlock(&mux_agent);
 }
 
 void write_debug() {
@@ -847,4 +865,105 @@ int decode_lidar_to_state(int d_left, int d_right, int d_front) {
 	s = s2*SMAX +s1;
 
 	return s;
+}
+
+int next_state(int a, int agent_id) {
+	int s_new;
+	struct Agent agent;
+
+	pthread_mutex_lock(&mux_agent);
+	agent = agents[agent_id];
+	agent.action.delta = action_to_steering(a);
+	agent.action.a = 0.0;
+	agent.car = update_car_model(agent.action, agent.car);
+	pthread_mutex_unlock(&mux_agent);
+
+	refresh_sensors();
+	pthread_mutex_lock(&mux_sensors);
+	s_new = decode_lidar_to_state(
+				sensors[agent_id][0].d, 
+				sensors[agent_id][2].d,
+				sensors[agent_id][1].d);
+	pthread_mutex_unlock(&mux_sensors);
+
+	return s_new;
+}
+
+int get_reward(int s, int s_new, int agent_id) {
+	int r = 0;
+	int d_left, d_front, d_right;
+	struct Agent agent;
+
+	pthread_mutex_lock(&mux_agent);
+	agent = agents[agent_id];
+	pthread_mutex_unlock(&mux_agent);
+
+	pthread_mutex_lock(&mux_sensors);
+	d_left = sensors[agent_id][0].d;
+	d_right = sensors[agent_id][2].d;
+	d_front = sensors[agent_id][1].d;
+	pthread_mutex_unlock(&mux_sensors);
+
+	if (d_front == SMAX) {
+		if (agent.action.delta != 0)
+			r += RWD_TURN_STRAIGHT;
+		else if (agent.action.delta == 0)
+			r += RWD_STRAIGHT;
+	}
+	if(agent.alive == 0)
+		r += RWD_CRASH;
+	else 
+		r += RWD_ALIVE;
+	if (((d_right == SMAX) || (d_left == SMAX)) && 
+		(agent.action.delta == 0))
+		r += RWD_WRONG_TURN;
+	if(d_right == SMAX) {
+		if(agent.car.theta > 0)
+			r += RWD_WRONG_TURN;
+		else if (agent.car.theta < 0)
+			r += RWD_CORRECT_TURN;
+	}
+	if(d_left == SMAX) {
+		if(agent.car.theta < 0)
+			r += RWD_WRONG_TURN;
+		else if (agent.car.theta > 0)
+			r += RWD_CORRECT_TURN;
+	}
+
+	return r;
+}
+
+float learn_to_drive(int agent_id) {
+	int a, s, s_new, r;
+	float err = 0.0;
+
+	pthread_mutex_lock(&mux_sensors);
+	s = decode_lidar_to_state(
+				sensors[agent_id][0].d, 
+				sensors[agent_id][2].d,
+				sensors[agent_id][1].d);
+	pthread_mutex_unlock(&mux_sensors);
+	a = ql_egreedy_policy(s);
+	s_new = next_state(a, agent_id);
+	r = get_reward(s, s_new, agent_id);
+	err += ql_updateQ(s, a, r, s_new);
+	
+	episode++;
+	if((episode%100) == 0)
+		ql_reduce_expl();
+	
+	return err/episode;
+}
+
+void init_qlearn_params() {
+	int n_states, n_actions;
+
+	n_states = SMAX*2;
+	n_actions = (MAX_THETA * 2) - 1;
+	//ql_init(n_states, n_actions);
+	// modify specific params by calling related function
+	ql_set_learning_rate(0.5);
+	ql_set_discount_factor(0.9);
+	ql_set_expl_range(1.0, 0.01);
+	ql_set_expl_decay(0.95);
 }

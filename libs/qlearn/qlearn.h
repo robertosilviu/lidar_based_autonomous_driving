@@ -1,8 +1,8 @@
 #ifndef QLEARN_H_
 #define QLEARN_H_
 
-#define MAX_STATES 100
-#define MAX_ACTIONS 100
+#define MAX_STATES 200
+#define MAX_ACTIONS 200
 #define ALPHA0	1.0						// default learning rate
 #define EPSINI 0.9						// initial exploration factor
 #define EPSFIN 0.1						// final exploration factor

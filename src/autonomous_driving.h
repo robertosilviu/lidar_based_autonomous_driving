@@ -10,6 +10,13 @@
 #define BUF_LEN 5
 #define GRAPH_H 300
 #define GRAPH_W 500
+//-------------------------------REINFORCEMENT LEARNING-------------------------
+#define RWD_CRASH -100
+#define RWD_ALIVE 1
+#define RWD_CORRECT_TURN 5
+#define RWD_WRONG_TURN -5
+#define RWD_STRAIGHT 6
+#define RWD_TURN_STRAIGHT -6
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
 #define WIN_Y 1024
@@ -160,6 +167,7 @@ pthread_mutexattr_t 	matt;			// define mutex attributes
 
 //----------------------------- GUI ----------------------------------------
 void init();
+void init_agent();
 void init_scene();
 void draw_track();
 void draw_car();
@@ -179,11 +187,14 @@ int read_sensor(int x0, int y0, float alpha);
 void refresh_sensors();
 //-------------------------------- Reinforcement Learning --------------------
 
-void init_agent();
-void update_car_model();
+void init_qlearn_params();
+struct Car update_car_model(struct Controls a, struct Car state);
 void crash_check();
 float action_to_steering(int action_k);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);
+int get_reward(int s, int s_new, int agent_id);
+int next_state(int a, int agent_id);
+float learn_to_drive(int agent_id);
 
 //-------------------------------- UTILS --------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
