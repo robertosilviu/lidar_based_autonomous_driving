@@ -242,6 +242,14 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	// use y=mx +b
 	int col, x, y, min_x, max_x, min_y, max_y, j;
 	float m, b;
+
+	col = getpixel(track_bmp, x0, y0);
+	if(col == color)
+		return 1;
+	col = getpixel(track_bmp, x1, y1);
+	if(col == color)
+		return 1;
+	/*
 	if( (x1 - x0) == 0) { // m goes to infinity
 		max_y = (y1 > y0) ? y1 : y0;
 		min_y = (y1 < y0) ? y1 : y0;
@@ -263,6 +271,7 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 				return 1;
 		}
 	}
+	*/
 	// pixel of provided color not found
 	return 0;
 }
