@@ -59,7 +59,7 @@ void ql_set_expl_range(float ini_e, float fin_e) {
 
 void ql_set_expl_decay(float d) {
 	decay = d;
-	printf("Exploration decayr: decay = %f\n", decay);
+	printf("Exploration decay: decay = %f\n", decay);
 }
 
 float ql_get_learning_rate() {
@@ -117,7 +117,7 @@ int ql_best_action(int s) {
 int ql_egreedy_policy(int s) {
 	int ra, ba;
 	float x;
-
+	
 	ba = ql_best_action(s);
 	ra = rand()%n_actions;
 	x = frand(0, 1);

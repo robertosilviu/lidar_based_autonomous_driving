@@ -7,7 +7,7 @@
 /*-----------------------------------------------------------------------------*/
 #define PRINTLINE printf("LINE: %d\n", __LINE__)
 #define LEN 50 // length of array of chars
-#define BUF_LEN 5
+#define BUF_LEN 10
 #define GRAPH_H 300
 #define GRAPH_W 500
 //-------------------------------REINFORCEMENT LEARNING-------------------------
@@ -17,6 +17,7 @@
 #define RWD_WRONG_TURN -5
 #define RWD_STRAIGHT 6
 #define RWD_TURN_STRAIGHT -6
+#define MAX_STATES_LIDAR 20
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
 #define WIN_Y 1024
@@ -66,25 +67,25 @@
 #define MAX_TASKS 10
 // handles command interpreter
 #define COM_INTERP_ID 1
-#define COM_INTERP_PRIO 10
+#define COM_INTERP_PRIO 40
 #define COM_INTERP_PER 40	// ms
 #define COM_INTERP_DLR 40
 
 // handles agent state update 
 #define AGENT_ID 2
-#define AGENT_PRIO 40
+#define AGENT_PRIO 10
 #define AGENT_PER 10	// ms
 #define AGENT_DLR 10
 // handles sensors reading
 #define SENSORS_ID 3
-#define SENSORS_PRIO 40
-#define SENSORS_PER 30	// ms
-#define SENSORS_DLR 30
+#define SENSORS_PRIO 10
+#define SENSORS_PER 10	// ms
+#define SENSORS_DLR 10
 // handles neural network
 
 // handles graphics 
 #define GRAPHICS_ID 0
-#define GRAPHICS_PRIO 30
+#define GRAPHICS_PRIO 20
 #define GRAPHICS_PER 20	// ms
 #define GRAPHICS_DLR 20
 /*-----------------------------------------------------------------------------*/
@@ -188,7 +189,7 @@ void refresh_sensors();
 //-------------------------------- Reinforcement Learning --------------------
 
 void init_qlearn_params();
-struct Car update_car_model(struct Controls a, struct Car state);
+void update_car_model(int agent_id);
 void crash_check();
 float action_to_steering(int action_k);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);

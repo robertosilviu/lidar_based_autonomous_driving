@@ -70,11 +70,11 @@ void init() {
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
 	// track window
 	init_agent();
-	//init_qlearn_params();
+	init_qlearn_params();
 	init_scene();
 	refresh_sensors();
 	update_scene();
-
+	
 	task_create(display_task, GRAPHICS_ID, GRAPHICS_PER, GRAPHICS_DLR, GRAPHICS_PRIO);
 	task_create(comms_task, COM_INTERP_ID, COM_INTERP_PER, COM_INTERP_DLR, COM_INTERP_PRIO);
 	task_create(agent_task, AGENT_ID, AGENT_PER, AGENT_DLR, AGENT_PRIO);
@@ -455,16 +455,16 @@ void* agent_task(void* arg) {
 	set_activation(i);
 
 	// initialize empty car to reset dead agent's car
-	new_car.v = 0.0;
+	new_car.v = 5.0;
 	new_car.x = 0.0;
 	new_car.y = 0.0;
 	new_car.theta = 0.0;
 
 	do {	
 		// need to update agent when crash occured
-		for(i = 0; i < MAX_AGENTS; i++) {
+		//for(i = 0; i < MAX_AGENTS; i++) {
 			if (mode == TRAINING)
-				progress = learn_to_drive(i);
+				progress = learn_to_drive(0);
 			else if ( mode == INFERENCE)
 				printf("Should do inference here\n");
 			// push error from rl optimization to cbuf
@@ -472,13 +472,16 @@ void* agent_task(void* arg) {
 			push_to_cbuf(episode, progress);
 			// reset dead agent
 			pthread_mutex_lock(&mux_agent);
-			if (agents[i].alive == 0) {
-				agents[i].alive = 1;
-				agents[i].car = new_car;
+			if (agents[0].alive == 0) {
+				agents[0].alive = 1;
+				agents[0].car = new_car;
+				//printf("Reset agent!\n");
+				//push_to_cbuf(episode, progress);
+				episode++;
 			}
 			pthread_mutex_unlock(&mux_agent);
 
-		}
+		//}
 
 		deadline_miss(AGENT_ID);
 		wait_for_activation(i);
@@ -609,7 +612,7 @@ void init_agent() {
 	vehicle.x = 0;
 	vehicle.y = 0;
 	vehicle.theta = 0.0;
-	vehicle.v = 0;
+	vehicle.v = 5;
 	//vehicle.a = 0.0;
 	
 	for(i = 0; i < MAX_AGENTS; i++) {
@@ -730,7 +733,7 @@ int read_sensor(int x0, int y0, float alpha) {
 	return d;
 }
 
-struct Car update_car_model(struct Controls a, struct Car curr_state) {
+void update_car_model(int agent_id) {
 	struct Car old_state, new_state;
 	struct Controls act;
 	float vx, vy, dt;
@@ -743,8 +746,8 @@ struct Car update_car_model(struct Controls a, struct Car curr_state) {
 	//dt = T_SCALE * (float)AGENT_PER/1000;
 	dt = (float)AGENT_PER/1000;
 	//for(i = 0; i < MAX_AGENTS; i++) {
-	old_state = curr_state;
-	act = a;
+	old_state = agents[agent_id].car;
+	act = agents[agent_id].action;
 
 	// CENTRE OF MASS
 	/*
@@ -781,7 +784,7 @@ struct Car update_car_model(struct Controls a, struct Car curr_state) {
 	new_state.y = old_state.y + (vy * dt);
 	new_state.theta = norm_theta + (omega * dt);
 
-	return new_state;
+	agents[agent_id].car = new_state;
 	//}
 	//pthread_mutex_unlock(&mux_agent);
 }
@@ -800,32 +803,52 @@ void write_debug() {
 	pthread_mutex_unlock(&mux_agent);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"x: %f", agent.car.x);
+	sprintf(debug,"x: %f m", agent.car.x);
 	textout_ex(debug_bmp, font, debug, x, 20, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"y: %f", agent.car.y);
+	sprintf(debug,"y: %f m", agent.car.y);
 	textout_ex(debug_bmp, font, debug, x, 30, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"v: %f", agent.car.v);
+	sprintf(debug,"v: %f m/s", agent.car.v);
 	textout_ex(debug_bmp, font, debug, x, 40, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"theta: %f", rad_to_deg(agent.car.theta));
+	sprintf(debug,"theta: %f deg", rad_to_deg(agent.car.theta));
 	textout_ex(debug_bmp, font, debug, x, 50, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"act.a: %f", agent.action.a);
+	sprintf(debug,"act.a: %f m/s^2", agent.action.a);
 	textout_ex(debug_bmp, font, debug, x, 60, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"act.delta: %f", agent.action.delta);
+	sprintf(debug,"act.delta: %f rad", agent.action.delta);
 	textout_ex(debug_bmp, font, debug, x, 70, white, -1);
 
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"alive: %d", agent.alive);
 	textout_ex(debug_bmp, font, debug, x, 80, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"gamma: %f", ql_get_discount_factor());
+	textout_ex(debug_bmp, font, debug, x, 90, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"alpha: %f", ql_get_learning_rate());
+	textout_ex(debug_bmp, font, debug, x, 100, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"max delta: %f rad", deg_to_rad(MAX_THETA));
+	textout_ex(debug_bmp, font, debug, x, 110, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"episode: %d", episode);
+	textout_ex(debug_bmp, font, debug, x, 120, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"epsilon: %f", ql_get_epsilon());
+	textout_ex(debug_bmp, font, debug, x, 130, white, -1);
 
 	//pthread_mutex_unlock(&mux_agent);
 
@@ -857,25 +880,23 @@ int decode_lidar_to_state(int d_left, int d_right, int d_front) {
 	int s1, s2, s;
 
 	delta = (d_left - d_right)/(SMAX+1);
-	front = d_front/SMAX;
+	front = d_front/(SMAX+1);
 
 	y = (delta+1)/2;
-	s1 = floor(SMAX * y); // to be checked
-	s2 = floor(SMAX * front);
-	s = s2*SMAX +s1;
+	s1 = floor(MAX_STATES_LIDAR * y); // to be checked
+	s2 = floor(MAX_STATES_LIDAR * front);
+	s = s2*MAX_STATES_LIDAR +s1;
 
 	return s;
 }
 
 int next_state(int a, int agent_id) {
 	int s_new;
-	struct Agent agent;
 
 	pthread_mutex_lock(&mux_agent);
-	agent = agents[agent_id];
-	agent.action.delta = action_to_steering(a);
-	agent.action.a = 0.0;
-	agent.car = update_car_model(agent.action, agent.car);
+	agents[agent_id].action.delta = action_to_steering(a);
+	agents[agent_id].action.a = 0.0;
+	update_car_model(agent_id);
 	pthread_mutex_unlock(&mux_agent);
 
 	refresh_sensors();
@@ -948,7 +969,7 @@ float learn_to_drive(int agent_id) {
 	r = get_reward(s, s_new, agent_id);
 	err += ql_updateQ(s, a, r, s_new);
 	
-	episode++;
+	//episode++;
 	if((episode%100) == 0)
 		ql_reduce_expl();
 	
@@ -958,11 +979,11 @@ float learn_to_drive(int agent_id) {
 void init_qlearn_params() {
 	int n_states, n_actions;
 
-	n_states = SMAX*2;
+	n_states = MAX_STATES_LIDAR*2;
 	n_actions = (MAX_THETA * 2) - 1;
-	//ql_init(n_states, n_actions);
+	ql_init(n_states, n_actions);
 	// modify specific params by calling related function
-	ql_set_learning_rate(0.5);
+	ql_set_learning_rate(0.7);
 	ql_set_discount_factor(0.9);
 	ql_set_expl_range(1.0, 0.01);
 	ql_set_expl_decay(0.95);
