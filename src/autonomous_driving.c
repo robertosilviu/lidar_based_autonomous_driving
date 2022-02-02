@@ -231,7 +231,7 @@ void crash_check() {
 		
 		if( dead_agents[i] == 1) {
 			agents[i].alive = 0;
-			//agents[i].car = new_car;
+			agents[i].car = new_car;
 			// at each restart the agent should change some parameters for the next simulation
 		}
 	}
@@ -456,7 +456,7 @@ void* display_task(void* arg) {
 }
 
 void* agent_task(void* arg) {
-	int i;
+	int i, j, alive_flag;
 	float progress = 0.0;
 	struct Car new_car;
 
@@ -464,16 +464,17 @@ void* agent_task(void* arg) {
 	set_activation(i);
 
 	// initialize empty car to reset dead agent's car
-	new_car.v = 5.0;
+	new_car.v = TRAIN_VEL;
 	new_car.x = 0.0;
 	new_car.y = 0.0;
 	new_car.theta = 0.0;
 
 	do {	
+		alive_flag = 0;
 		// need to update agent when crash occured
 		//for(i = 0; i < MAX_AGENTS; i++) {
 			if (mode == TRAINING)
-				progress = learn_to_drive(0);
+				progress = learn_to_drive();
 			else if ( mode == INFERENCE)
 				printf("Should do inference here\n");
 			// push error from rl optimization to cbuf
@@ -481,12 +482,20 @@ void* agent_task(void* arg) {
 			push_to_cbuf(episode, progress);
 			// reset dead agent
 			pthread_mutex_lock(&mux_agent);
-			if (agents[0].alive == 0) {
-				agents[0].alive = 1;
-				agents[0].car = new_car;
-				//printf("Reset agent!\n");
-				//push_to_cbuf(episode, progress);
+			for(j = 0; j < MAX_AGENTS; j++) {
+				if (agents[0].alive == 1) {
+					alive_flag = 1;
+				}
+			}
+			printf("alive_flag is %d\n", alive_flag);
+			// no agent alive, start new episode
+			if(alive_flag == 0) {
 				episode++;
+				for(j = 0; j < MAX_AGENTS; j++) {
+						agents[0].alive = 1;
+						agents[0].car = new_car;
+						//printf("Reset agent!\n");
+				}
 			}
 			pthread_mutex_unlock(&mux_agent);
 
@@ -621,13 +630,15 @@ void init_agent() {
 	vehicle.x = 0;
 	vehicle.y = 0;
 	vehicle.theta = 0.0;
-	vehicle.v = 5;
+	vehicle.v = TRAIN_VEL;
 	//vehicle.a = 0.0;
 	
 	for(i = 0; i < MAX_AGENTS; i++) {
 		agents[i].alive = 1;
 		agents[i].distance = 0.0;
 		agents[i].car = vehicle;
+		agents[i].error = 0.0;
+		agents[i].state = 0; // should be checked if it is ok to use a wrong state
 	}
 }
 
@@ -725,6 +736,47 @@ void refresh_sensors() {
 	}
 	pthread_mutex_unlock(&mux_sensors);
 }
+void get_updated_lidars_distance(struct Car car, struct Lidar car_sensors[]) {
+	struct Lidar lidar;
+	float x_p, y_p;
+	
+	if (car_sensors == NULL) {
+		printf("ERROR: Invalid array! \n");
+		exit(1);
+	}
+
+	// left lidar
+	lidar.alpha = car.theta + deg_to_rad(45.0);
+	x_p = car.x + L*cos(car.theta);	// global frame in m from bottom left
+	y_p = car.y + L*sin(car.theta);
+	//printf("x_p: %f, y_p: %f\n", x_p, y_p);
+	lidar.x = BTM_X + (x_p/SCALE);
+	lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
+	lidar.d = read_sensor(
+					lidar.x, 
+					lidar.y, 
+					lidar.alpha);
+	car_sensors[0] = lidar;
+	// front
+	lidar.alpha = car.theta + deg_to_rad(0.0);
+	lidar.x = BTM_X + (x_p/SCALE);
+	lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
+	lidar.d = read_sensor(
+					lidar.x, 
+					lidar.y, 
+					lidar.alpha);
+	car_sensors[1] = lidar;
+	// right
+	lidar.alpha = car.theta + deg_to_rad(-45.0);
+	lidar.x = BTM_X + (x_p/SCALE);
+	lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
+	lidar.d = read_sensor(
+					lidar.x, 
+					lidar.y, 
+					lidar.alpha);
+	car_sensors[2] = lidar;
+}
+
 // consider the scale 1m = 1px
 int read_sensor(int x0, int y0, float alpha) {
 	int col;
@@ -742,7 +794,7 @@ int read_sensor(int x0, int y0, float alpha) {
 	return d;
 }
 
-void update_car_model(int agent_id) {
+struct Car update_car_model(struct Agent agent) {
 	struct Car old_state, new_state;
 	struct Controls act;
 	float vx, vy, dt;
@@ -755,8 +807,8 @@ void update_car_model(int agent_id) {
 	//dt = T_SCALE * (float)AGENT_PER/1000;
 	dt = (float)AGENT_PER/1000;
 	//for(i = 0; i < MAX_AGENTS; i++) {
-	old_state = agents[agent_id].car;
-	act = agents[agent_id].action;
+	old_state = agent.car;
+	act = agent.action;
 
 	// CENTRE OF MASS
 	/*
@@ -793,7 +845,7 @@ void update_car_model(int agent_id) {
 	new_state.y = old_state.y + (vy * dt);
 	new_state.theta = norm_theta + (omega * dt);
 
-	agents[agent_id].car = new_state;
+	return new_state;
 	//}
 	//pthread_mutex_unlock(&mux_agent);
 }
@@ -899,6 +951,7 @@ int decode_lidar_to_state(int d_left, int d_right, int d_front) {
 	return s;
 }
 
+/*
 int next_state(int a, int agent_id) {
 	int s_new;
 
@@ -918,21 +971,11 @@ int next_state(int a, int agent_id) {
 
 	return s_new;
 }
-
-int get_reward(int s, int s_new, int agent_id) {
+*/
+int get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	int r = 0;
-	int d_left, d_front, d_right;
-	struct Agent agent;
-
-	pthread_mutex_lock(&mux_agent);
-	agent = agents[agent_id];
-	pthread_mutex_unlock(&mux_agent);
-
-	pthread_mutex_lock(&mux_sensors);
-	d_left = sensors[agent_id][0].d;
-	d_right = sensors[agent_id][2].d;
-	d_front = sensors[agent_id][1].d;
-	pthread_mutex_unlock(&mux_sensors);
+	//int d_left, d_front, d_right;
+	//struct Agent agent;
 
 	if (d_front == SMAX) {
 		if (agent.action.delta != 0)
@@ -963,26 +1006,60 @@ int get_reward(int s, int s_new, int agent_id) {
 	return r;
 }
 
-float learn_to_drive(int agent_id) {
-	int a, s, s_new, r;
-	float err = 0.0;
+float learn_to_drive() {
+	int a[MAX_AGENTS], s[MAX_AGENTS], s_new[MAX_AGENTS], r[MAX_AGENTS];
+	float max_err;
+	int i;
+	struct Agent agent;
+	struct Lidar car_sensors[3];
+	int d_l[MAX_AGENTS], d_f[MAX_AGENTS], d_r[MAX_AGENTS]; // lidar distances
+
+	max_err = 0.0;
 
 	pthread_mutex_lock(&mux_sensors);
-	s = decode_lidar_to_state(
-				sensors[agent_id][0].d, 
-				sensors[agent_id][2].d,
-				sensors[agent_id][1].d);
+	for(i = 0; i < MAX_AGENTS; i++) {
+		d_l[i] = sensors[i][0].d;
+		d_f[i] = sensors[i][1].d;
+		d_r[i] = sensors[i][2].d;
+		s[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
+		a[i] = ql_egreedy_policy(s[i]);
+	}
 	pthread_mutex_unlock(&mux_sensors);
-	a = ql_egreedy_policy(s);
-	s_new = next_state(a, agent_id);
-	r = get_reward(s, s_new, agent_id);
-	err += ql_updateQ(s, a, r, s_new);
+
+	pthread_mutex_lock(&mux_agent);
+	for(i = 0; i < MAX_AGENTS; i++) {
+		agent = agents[i];
+		agent.action.delta = action_to_steering(a[i]);
+		agent.action.a = 0.0;
+		agent.car = update_car_model(agent);
+		
+
+		get_updated_lidars_distance(agent.car, car_sensors);
+		d_l[i] = car_sensors[0].d;
+		d_f[i] = car_sensors[1].d;
+		d_r[i] = car_sensors[2].d;
+
+		s_new[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
+		r[i] = get_reward(agent, d_l[i], d_f[i], d_r[i]);
+		agent.error += ql_updateQ(s[i], a[i], r[i], s_new[i]);
+		// update agent state
+		agent.state = s_new[i];
+		agents[i] = agent;
+		// update max error
+		if (agent.error > max_err)
+			max_err = agent.error;
+	}
+	pthread_mutex_unlock(&mux_agent);
+	//a = ql_egreedy_policy(s);
+	//s_new = next_state(a, agent_id);
+	//r = get_reward(s, s_new, agent_id);
+	//err += ql_updateQ(s, a, r, s_new);
 	
 	//episode++;
 	if((episode%100) == 0)
 		ql_reduce_expl();
-	
-	return err/episode;
+	// error handling is wrong !!  needs to be changed
+	return max_err/episode;
 }
 
 void init_qlearn_params() {

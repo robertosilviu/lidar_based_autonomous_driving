@@ -55,10 +55,11 @@
 #define MIN_A (-0.5*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
-#define MAX_AGENTS 1
+#define MAX_AGENTS 2
 #define CRASH_DIST 3
 #define INFERENCE 1
 #define TRAINING 0
+#define TRAIN_VEL 5.0
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
 #define STEP 1 // lidar resolution(m) = 1px
@@ -125,6 +126,8 @@ struct Agent {
 	int alive; // 1 = alive, 0 = dead due to collision with track borders
 	float distance;	// distance raced on track 
 	struct Controls action;
+	int state;
+	float error;
 	// da aggiungere il reward
 };
 
@@ -186,16 +189,17 @@ void* sensors_task(void* arg);
 //-------------------------------- Sensors -----------------------------------
 int read_sensor(int x0, int y0, float alpha);
 void refresh_sensors();
+void get_updated_lidars_distance(struct Car car, struct Lidar car_sensors[]);
 //-------------------------------- Reinforcement Learning --------------------
 
 void init_qlearn_params();
-void update_car_model(int agent_id);
+struct Car update_car_model(struct Agent agent);
 void crash_check();
 float action_to_steering(int action_k);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);
-int get_reward(int s, int s_new, int agent_id);
-int next_state(int a, int agent_id);
-float learn_to_drive(int agent_id);
+int get_reward(struct Agent agent, int d_left, int d_front, int d_right);
+//int next_state(int a, int agent_id);
+float learn_to_drive();
 
 //-------------------------------- UTILS --------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
