@@ -32,6 +32,7 @@ void ql_init(int ns, int na) {
 	ini_eps = EPSINI;
 	fin_eps = EPSFIN;
 	decay = DECAY0;
+	epsilon = EPSILON0;
 
 	for(s = 0; s < n_states; s++) {
 		for(a = 0; a < n_states; a++) {
@@ -81,6 +82,8 @@ float ql_get_epsilon() {
 void ql_reduce_expl() {
 	norm_eps = decay*norm_eps;
 	epsilon = fin_eps + norm_eps*(ini_eps - fin_eps);
+
+	printf("Reducing exploration rate -> norm_eps: %f, epsilon: %f \n", norm_eps, epsilon);
 }
 
 float ql_maxQ(int s) {
@@ -121,7 +124,7 @@ int ql_egreedy_policy(int s) {
 	ba = ql_best_action(s);
 	ra = rand()%n_actions;
 	x = frand(0, 1);
-
+	//printf("ra is %d\n", ra);
 	if (x < epsilon)
 		return ra;
 	else 

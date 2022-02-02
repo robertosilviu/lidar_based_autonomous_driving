@@ -155,7 +155,7 @@ int mode = TRAINING;
 struct Lidar sensors[MAX_AGENTS][3];
 
 struct cbuf graph_buff;
-int episode = 0;
+int episode = 1;
 int graph_index = 0;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES

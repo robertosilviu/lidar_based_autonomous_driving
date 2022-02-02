@@ -483,17 +483,20 @@ void* agent_task(void* arg) {
 			// reset dead agent
 			pthread_mutex_lock(&mux_agent);
 			for(j = 0; j < MAX_AGENTS; j++) {
-				if (agents[0].alive == 1) {
+				if (agents[j].alive == 1) {
 					alive_flag = 1;
 				}
 			}
-			printf("alive_flag is %d\n", alive_flag);
 			// no agent alive, start new episode
 			if(alive_flag == 0) {
 				episode++;
+
+				if((episode%100) == 0)
+					ql_reduce_expl();
+					
 				for(j = 0; j < MAX_AGENTS; j++) {
-						agents[0].alive = 1;
-						agents[0].car = new_car;
+						agents[j].alive = 1;
+						agents[j].car = new_car;
 						//printf("Reset agent!\n");
 				}
 			}
@@ -1023,6 +1026,7 @@ float learn_to_drive() {
 		d_r[i] = sensors[i][2].d;
 		s[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
 		a[i] = ql_egreedy_policy(s[i]);
+		//printf("action for agent %d is %d\n", i, a[i]);
 	}
 	pthread_mutex_unlock(&mux_sensors);
 
@@ -1056,8 +1060,6 @@ float learn_to_drive() {
 	//err += ql_updateQ(s, a, r, s_new);
 	
 	//episode++;
-	if((episode%100) == 0)
-		ql_reduce_expl();
 	// error handling is wrong !!  needs to be changed
 	return max_err/episode;
 }
@@ -1069,7 +1071,7 @@ void init_qlearn_params() {
 	n_actions = (MAX_THETA * 2) - 1;
 	ql_init(n_states, n_actions);
 	// modify specific params by calling related function
-	ql_set_learning_rate(0.7);
+	ql_set_learning_rate(0.5);
 	ql_set_discount_factor(0.9);
 	ql_set_expl_range(1.0, 0.01);
 	ql_set_expl_decay(0.95);

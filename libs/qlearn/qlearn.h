@@ -8,6 +8,7 @@
 #define EPSFIN 0.1						// final exploration factor
 #define GAMMA0 0.9						// default discount factor
 #define DECAY0 0.95						// default epsilon decay rate
+#define EPSILON0 0.9
 
 static int n_states;
 static int n_actions;
