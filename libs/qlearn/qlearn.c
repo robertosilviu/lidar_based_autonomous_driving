@@ -63,6 +63,21 @@ void ql_set_expl_decay(float d) {
 	printf("Exploration decay: decay = %f\n", decay);
 }
 
+void ql_set_Q_matrix(int s, int a, int val) {
+
+	if (s >= n_states) {
+		printf("ERROR: current state index greater than STATES dimension: %d > %d\n", s, n_states);
+		exit(1);
+	}
+
+	if (a >= n_actions) {
+		printf("ERROR: current action index greater than ACTIONS dimension: %d > %d\n", a, n_actions);
+		exit(1);
+	}
+
+	Q[s][a] = val;
+}
+
 float ql_get_learning_rate() {
 	return alpha;
 }
@@ -81,6 +96,14 @@ float ql_get_epsilon() {
 
 int ql_get_Q(int s, int a) {
 	return Q[s][a];
+}
+
+int ql_get_nstates() {
+	return n_states;
+}
+
+int ql_get_nactions() {
+	return n_actions;
 }
 
 void ql_reduce_expl() {

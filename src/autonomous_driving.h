@@ -17,7 +17,7 @@
 #define RWD_WRONG_TURN -5
 #define RWD_STRAIGHT 6
 #define RWD_TURN_STRAIGHT -6
-#define MAX_STATES_LIDAR 20
+#define MAX_STATES_LIDAR 50
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
 #define WIN_Y 1024
@@ -55,7 +55,7 @@
 #define MIN_A (-0.5*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
-#define MAX_AGENTS 1
+#define MAX_AGENTS 4
 #define CRASH_DIST 3
 #define INFERENCE 1
 #define TRAINING 0
@@ -91,6 +91,8 @@
 #define GRAPHICS_PRIO 20
 #define GRAPHICS_PER 20	// ms
 #define GRAPHICS_DLR 20
+
+#define Q_MAT_FILE_NAME "q_matrix.txt"
 /*-----------------------------------------------------------------------------*/
 /*								CUSTOM STRUCTURES							   */
 /*-----------------------------------------------------------------------------*/
@@ -164,7 +166,7 @@ float max_reward = RWD_CRASH;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
 //---------------------------------------------------------------------------
-pthread_mutex_t			mux_agent, mux_sensors, mux_cbuffer; // define 3 mutex
+pthread_mutex_t			mux_agent, mux_sensors, mux_cbuffer, mux_q_matrix; // define 3 mutex
 
 pthread_mutexattr_t 	matt;			// define mutex attributes
 
@@ -202,9 +204,9 @@ void crash_check();
 float action_to_steering(int action_k);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);
 float get_reward(struct Agent agent, int d_left, int d_front, int d_right);
-//int next_state(int a, int agent_id);
 float learn_to_drive();
-
+void save_Q_matrix_to_file();
+void read_Q_matrix_from_file();
 //-------------------------------- UTILS --------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);

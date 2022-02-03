@@ -44,6 +44,7 @@ void init() {
 	pthread_mutex_init(&mux_agent, &matt);
 	pthread_mutex_init(&mux_sensors, &matt);
 	pthread_mutex_init(&mux_cbuffer, &matt);
+	pthread_mutex_init(&mux_q_matrix, &matt);
 
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
@@ -509,6 +510,8 @@ void* agent_task(void* arg) {
 		deadline_miss(AGENT_ID);
 		wait_for_activation(i);
 	} while (!end);
+	// save learning Q matrix on file for further use
+	save_q_matrix_to_file();
 
 	return NULL;
 }
@@ -582,6 +585,12 @@ void* comms_task(void* arg) {
 						printf("ERROR: wrong mode! Should be 0 or 1\n");
 						exit(1);
 					}
+					break;
+				case KEY_L:
+					printf("Loading Q matrix from file %s\n", Q_MAT_FILE_NAME);
+					pthread_mutex_lock(&mux_q_matrix);
+					read_Q_matrix_from_file();
+					pthread_mutex_unlock(&mux_q_matrix);
 					break;
 				default:
 					break;
@@ -961,27 +970,6 @@ int decode_lidar_to_state(int d_left, int d_right, int d_front) {
 	return s;
 }
 
-/*
-int next_state(int a, int agent_id) {
-	int s_new;
-
-	pthread_mutex_lock(&mux_agent);
-	agents[agent_id].action.delta = action_to_steering(a);
-	agents[agent_id].action.a = 0.0;
-	update_car_model(agent_id);
-	pthread_mutex_unlock(&mux_agent);
-
-	refresh_sensors();
-	pthread_mutex_lock(&mux_sensors);
-	s_new = decode_lidar_to_state(
-				sensors[agent_id][0].d, 
-				sensors[agent_id][2].d,
-				sensors[agent_id][1].d);
-	pthread_mutex_unlock(&mux_sensors);
-
-	return s_new;
-}
-*/
 float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	float r = 0;
 	//int d_left, d_front, d_right;
@@ -1016,40 +1004,13 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	} else {
 		r = ALPHA_REWARD * (vx - vy - fabs(track_pos));
 	}
-	/*
-	if (d_front == SMAX) {
-		if (agent.action.delta != 0)
-			r += RWD_TURN_STRAIGHT;
-		else if (agent.action.delta == 0)
-			r += RWD_STRAIGHT;
-	}
-	if(agent.alive == 0)
-		r += RWD_CRASH;
-	else 
-		r += RWD_ALIVE;
-	if (((d_right == SMAX) || (d_left == SMAX)) && 
-		(agent.action.delta == 0))
-		r += RWD_WRONG_TURN;
-	if(d_right == SMAX) {
-		if(agent.car.theta > 0)
-			r += RWD_WRONG_TURN;
-		else if (agent.car.theta < 0)
-			r += RWD_CORRECT_TURN;
-	}
-	if(d_left == SMAX) {
-		if(agent.car.theta < 0)
-			r += RWD_WRONG_TURN;
-		else if (agent.car.theta > 0)
-			r += RWD_CORRECT_TURN;
-	}
 
-	*/
 	return r;
 }
 
 float learn_to_drive() {
 	int a[MAX_AGENTS], s[MAX_AGENTS], s_new[MAX_AGENTS];
-	float max_err;
+	float max_err, err;
 	float r[MAX_AGENTS];
 	int i, curr_s;
 	struct Agent agent;
@@ -1094,10 +1055,12 @@ float learn_to_drive() {
 		agent.state = s_new[i];
 		agents[i] = agent;
 		// update max error
+		// needs better handling of error
 		if (agent.error > max_err)
 			max_err = agent.error;
 	}
 	pthread_mutex_unlock(&mux_agent);
+
 	pthread_mutex_lock(&mux_cbuffer);
 	for(i = 0; i < BUF_LEN; i++) {
 		curr_s = s_new[0]; // save to graph the action of first agent only
@@ -1122,4 +1085,84 @@ void init_qlearn_params() {
 	ql_set_discount_factor(0.9);
 	ql_set_expl_range(1.0, 0.01);
 	ql_set_expl_decay(0.95);
+}
+void save_q_matrix_to_file() {
+	FILE *fp;
+	int n_states, n_actions, result;
+	int i, j;
+	n_states = ql_get_nstates();
+	n_actions = ql_get_nactions();
+	int Q_tmp[n_states][n_actions];
+	
+	for(i = 0; i < n_states; i++) {
+		for(j = 0; j < n_actions; j++) {
+			Q_tmp[i][j] = ql_get_Q(i, j);
+		}
+	}
+
+	fp = fopen(Q_MAT_FILE_NAME, "w");
+	if (fp == NULL) {
+		printf("ERROR: could not open file to write Q matrix\n");
+		exit(1);
+	}
+	// save the number of states and actions
+	fprintf(fp, "%d %d\n", n_states, n_actions);
+	// save values of Q Matrix
+	for(i = 0; i < n_states; i++) {
+		for(j = 0; j < n_actions; j++) {
+			fprintf(fp, "%d ", Q_tmp[i][j]);
+		}
+		fprintf(fp, "\n");
+	}
+	
+	fclose(fp);
+	printf("Q matrix saved on file %s!\n", Q_MAT_FILE_NAME);
+}
+
+void read_Q_matrix_from_file() {
+	FILE *fp;
+	int dim_states_f, dim_actions_f, n_states, n_actions;
+	char buf[50];
+	char q_buff[1024];
+	int result, size;
+	char *ptr;
+	int val;
+	int i, j; // indexes to use for matrix
+
+	n_states = ql_get_nstates();
+	n_actions = ql_get_nactions();
+	i = 0;
+	j = 0;
+	fp = fopen(Q_MAT_FILE_NAME, "r");
+
+	size = 50;
+	if (fp == NULL) {
+		printf("ERROR: could not open file to read Q matrix\n");
+		exit(1);
+	}
+	// check saved Q matrix dimensions from file
+	if (fgets(buf, size, fp) != -1) {
+		sscanf(buf, " %d %d", &dim_states_f, &dim_actions_f);
+		if (dim_states_f != n_states) {
+			printf("ERROR: STATES dimension different from current Q matrix configuration!\n");
+			exit(1);
+		}
+		if (dim_actions_f != n_actions) {
+			printf("ERROR: ACTIONS dimension different from current Q matrix configuration!\n");
+			exit(1);
+		}
+	}
+
+	size = 1024;
+	while (fgets(q_buff, size, fp) != NULL) {
+		ptr = q_buff;
+		j = 0;
+		while (val = strtol(ptr, &ptr, 10)) {
+			ql_set_Q_matrix(i, j, val);
+			j++;
+		}
+		i++;
+	}
+	
+	printf("Q Matrix restored!\n");
 }
