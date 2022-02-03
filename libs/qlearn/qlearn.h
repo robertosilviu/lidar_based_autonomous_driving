@@ -37,6 +37,7 @@ float ql_get_learning_rate();
 float ql_get_discount_factor();
 float ql_get_expl_decay();
 float ql_get_epsilon();
+int ql_get_Q(int s, int a);
 
 void ql_reduce_expl();
 float ql_maxQ(int s);

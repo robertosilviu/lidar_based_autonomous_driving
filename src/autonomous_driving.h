@@ -7,7 +7,7 @@
 /*-----------------------------------------------------------------------------*/
 #define PRINTLINE printf("LINE: %d\n", __LINE__)
 #define LEN 50 // length of array of chars
-#define BUF_LEN 10
+
 #define GRAPH_H 300
 #define GRAPH_W 500
 //-------------------------------REINFORCEMENT LEARNING-------------------------
@@ -60,6 +60,8 @@
 #define INFERENCE 1
 #define TRAINING 0
 #define TRAIN_VEL 5.0
+
+#define BUF_LEN (MAX_THETA*2)
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
 #define STEP 1 // lidar resolution(m) = 1px
@@ -135,7 +137,7 @@ struct cbuf {
 	int head;
 	int tail;
 	int x[BUF_LEN];
-	float y[BUF_LEN];
+	int y[BUF_LEN];
 };
 /*-----------------------------------------------------------------------------*/
 /*								GLOBAL VARIABLES							   */
@@ -155,8 +157,10 @@ int mode = TRAINING;
 struct Lidar sensors[MAX_AGENTS][3];
 
 struct cbuf graph_buff;
-int episode = 1;
+int episode = 0;
 int graph_index = 0;
+
+float max_reward = RWD_CRASH;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
 //---------------------------------------------------------------------------
@@ -208,6 +212,6 @@ float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
 char get_scancode();
 fixed deg_to_fixed(float deg);
-void push_to_cbuf(int x, float y);
+void push_to_cbuf(int x, int y, int id);
 int is_cbuff_empty();
 void write_debug();

@@ -36,7 +36,7 @@ void ql_init(int ns, int na) {
 
 	for(s = 0; s < n_states; s++) {
 		for(a = 0; a < n_states; a++) {
-			Q[s][a] = 0;
+			Q[s][a] = -100;
 		}
 	}
 
@@ -79,6 +79,10 @@ float ql_get_epsilon() {
 	return epsilon;
 }
 
+int ql_get_Q(int s, int a) {
+	return Q[s][a];
+}
+
 void ql_reduce_expl() {
 	norm_eps = decay*norm_eps;
 	epsilon = fin_eps + norm_eps*(ini_eps - fin_eps);
@@ -87,22 +91,25 @@ void ql_reduce_expl() {
 }
 
 float ql_maxQ(int s) {
-	int a;
-	float m;
+	int a, m;
+	//float m;
 
 	m = Q[s][0];
 
 	for(a = 1; a < n_states; a++) {
-		if (Q[s][a] > m)
+		if (Q[s][a] > m) {
 			m = Q[s][a];
+			//printf("q: %d\n", Q[s][a]);
+		}
+			
 	}
-
+	//printf("m: %d\n", m);
 	return m;
 }
 
 int ql_best_action(int s) {
-	int a, ba;
-	float m;
+	int a, ba, m;
+	//float m;
 
 	m = Q[s][0];
 	ba = 0;
@@ -123,8 +130,8 @@ int ql_egreedy_policy(int s) {
 	
 	ba = ql_best_action(s);
 	ra = rand()%n_actions;
-	x = frand(0, 1);
-	//printf("ra is %d\n", ra);
+	x = frand(0.0, 1.0);
+	//printf("ra: %d, x: %f, ba: %d\n", ra, x, ba);
 	if (x < epsilon)
 		return ra;
 	else 
@@ -138,6 +145,7 @@ float ql_updateQ(int s, int a, float r, int snew) {
 	q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q[s][a];
 	Q[s][a] = Q[s][a] + alpha*td_err;
+	//printf("Q: %d, s: %d \n", Q[s][a], s);
 
 	return fabs(td_err);
 }

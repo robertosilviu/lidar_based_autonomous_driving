@@ -281,6 +281,18 @@ int is_cbuff_empty() {
 		return 1;
 	return 0;
 }
+
+void push_to_cbuf(int x, int y, int id) {
+
+	//pthread_mutex_lock(&mux_cbuffer);
+	
+	// save the data
+	graph_buff.x[id] = x;
+	graph_buff.y[id] = y;
+	//printf("adding: %d, %d \n", x, y);
+	//pthread_mutex_unlock(&mux_cbuffer);
+}
+/*
 // needs mutex
 void push_to_cbuf(int x, float y) {
 	int curr_id;
@@ -304,76 +316,7 @@ void push_to_cbuf(int x, float y) {
 	//printf("adding: %d, %f \n", x, y);
 	pthread_mutex_unlock(&mux_cbuffer);
 }
-/*
-void show_rl_graph() {
-	int px_h, px_w, white, orange;
-	int shift_y_axis = 50;
-	int shift_x_axis = 500;
-	int x_offset = 50;
-	struct ViewPoint p1, p2;
-	int i, index;	// used for for cycle
-	float scale_y, scale_x, g_h;
-	char debug[LEN];
-	// it needs a mutex for buffer access
-	px_h = graph_bmp->h - shift_y_axis;
-	px_w = graph_bmp->w - shift_x_axis - x_offset;
 
-	white = makecol(255,255,255);
-	orange = makecol(255,99,71);
-	clear_to_color(graph_bmp, 0);
-	// draw axes
-	line(graph_bmp, x_offset, px_h, px_w, px_h, white);	// x
-	line(graph_bmp, x_offset, px_h, x_offset, 0, white);			// y
-
-	pthread_mutex_lock(&mux_cbuffer);
-	// get max elem of buffer
-	for(i =0; i < BUF_LEN; i++) {
-		if(graph_buff.y[i] > g_h)
-			g_h = graph_buff.y[i];
-	}
-
-	// find scale based on max value stored in buffer
-	scale_y = (float)g_h/px_h;
-	scale_x = px_w/BUF_LEN; // amount of pixel for 1 unit of buffer
-
-	for(i = 0; i < (BUF_LEN - 1); i++) {
-		index = graph_buff.tail + i;
-		p1.y = px_h - floor(graph_buff.y[index]/scale_y);
-		memset(debug, 0, sizeof debug);
-		sprintf(debug,"%.2f", graph_buff.y[index]);
-		textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
-
-		p1.x = (x_offset + scale_x * i);
-		memset(debug, 0, sizeof debug);
-		sprintf(debug,"ep: %d", graph_buff.x[index]);
-		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
-
-		index = (index + 1) % BUF_LEN;
-		p2.y = px_h - floor(graph_buff.y[index]/scale_y);
-		memset(debug, 0, sizeof debug);
-		sprintf(debug,"%.2f", graph_buff.y[index]);
-		textout_ex(graph_bmp, font, debug, 0, p2.y, white, -1);
-
-		p2.x = (x_offset + scale_x * (i+1));
-		memset(debug, 0, sizeof debug);
-		sprintf(debug,"ep: %d", graph_buff.x[index]);
-		textout_ex(graph_bmp, font, debug, p2.x, px_h+5, white, -1);
-		
-		line(graph_bmp, p1.x, p1.y, p2.x, p2.y, orange);
-		// draw small lines on values index on x and y
-		line(graph_bmp, p1.x, px_h, p1.x, px_h -8, white);
-		line(graph_bmp, p2.x, px_h, p2.x, px_h -8, white);
-		line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
-		line(graph_bmp, x_offset, p2.y, x_offset + 8, p2.y, white);
-
-	}
-	// update buffer tail 
-	graph_buff.tail = (graph_buff.tail + BUF_LEN) % BUF_LEN;
-
-	pthread_mutex_unlock(&mux_cbuffer);
-	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
-}
-*/
 void show_rl_graph() {
 	int px_h, px_w, white, orange;
 	int shift_y_axis = 50;
@@ -416,7 +359,8 @@ void show_rl_graph() {
 
 		p1.x = (x_offset + scale_x * graph_index);
 		memset(debug, 0, sizeof debug);
-		sprintf(debug,"ep: %d", graph_buff.x[index]);
+		//sprintf(debug,"ep: %d", graph_buff.x[index]);
+		sprintf(debug,"%d", graph_buff.x[index]);
 		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
 		
 		circlefill(graph_bmp, p1.x, p1.y, r, orange);
@@ -431,6 +375,64 @@ void show_rl_graph() {
 	pthread_mutex_unlock(&mux_cbuffer);
 	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
 }
+*/
+void show_rl_graph() {
+	int px_h, px_w, white, orange;
+	int shift_y_axis = 50;
+	int shift_x_axis = 300;
+	int x_offset = 50;
+	int r = 3;
+	struct ViewPoint p1;
+	int i, index;	// used for for cycle
+	float scale_y, scale_x;
+	int g_h;
+	char debug[LEN];
+	// it needs a mutex for buffer access
+	px_h = graph_bmp->h - shift_y_axis;
+	px_w = graph_bmp->w - shift_x_axis - x_offset;
+
+	white = makecol(255,255,255);
+	orange = makecol(255,99,71);
+	clear_to_color(graph_bmp, 0);
+	// draw axes
+	line(graph_bmp, x_offset, px_h/2, px_w, px_h/2, white);	// x
+	line(graph_bmp, x_offset, px_h, x_offset, 0, white);			// y
+
+	pthread_mutex_lock(&mux_cbuffer);
+	// get max elem of buffer
+	for(i = 0; i < BUF_LEN; i++) {
+		if(abs(graph_buff.y[i]) > g_h)
+			g_h = abs(graph_buff.y[i]);
+	}
+
+	// find scale based on max value stored in buffer
+	scale_y = (float)g_h/(px_h/2);
+	//printf("scale_y: %f, g_h: %d\n", scale_y, g_h);
+	scale_x = px_w/(BUF_LEN+1); // amount of pixel for 1 unit of buffer
+
+	//i = 1;
+	for(i = 0; i < BUF_LEN; i++) {
+		index = i;
+		p1.y = px_h/2 - floor(graph_buff.y[index]/scale_y);
+		//memset(debug, 0, sizeof debug);
+		//sprintf(debug,"%d", graph_buff.y[index]);
+		//textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
+
+		p1.x = (x_offset + scale_x + (scale_x * index));
+		memset(debug, 0, sizeof debug);
+		//sprintf(debug,"ep: %d", graph_buff.x[index]);
+		sprintf(debug,"%d", i - BUF_LEN/2);
+		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
+		
+		circlefill(graph_bmp, p1.x, p1.y, r, orange);
+		line(graph_bmp, p1.x, px_h, p1.x, px_h -8, white);
+		//line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
+	}
+
+	pthread_mutex_unlock(&mux_cbuffer);
+	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
+}
+
 void* display_task(void* arg) {
 	//struct Controls action;
 	int i;
@@ -479,7 +481,7 @@ void* agent_task(void* arg) {
 				printf("Should do inference here\n");
 			// push error from rl optimization to cbuf
 			// should have also the time of pushing
-			push_to_cbuf(episode, progress);
+			//push_to_cbuf(episode, progress);
 			// reset dead agent
 			pthread_mutex_lock(&mux_agent);
 			for(j = 0; j < MAX_AGENTS; j++) {
@@ -914,6 +916,10 @@ void write_debug() {
 	sprintf(debug,"epsilon: %f", ql_get_epsilon());
 	textout_ex(debug_bmp, font, debug, x, 130, white, -1);
 
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"max reward: %f", max_reward);
+	textout_ex(debug_bmp, font, debug, x, 140, white, -1);
+
 	//pthread_mutex_unlock(&mux_agent);
 
 	x = SIM_X;
@@ -943,7 +949,7 @@ int decode_lidar_to_state(int d_left, int d_right, int d_front) {
 	float delta, front, y;
 	int s1, s2, s;
 
-	delta = (d_left - d_right)/(SMAX+1);
+	delta = (float)(d_left - d_right)/(SMAX+1);
 	front = d_front/(SMAX+1);
 
 	y = (delta+1)/2;
@@ -951,6 +957,7 @@ int decode_lidar_to_state(int d_left, int d_right, int d_front) {
 	s2 = floor(MAX_STATES_LIDAR * front);
 	s = s2*MAX_STATES_LIDAR +s1;
 
+	//printf("s: %d, y: %f, delta: %f\n", s, y, delta);
 	return s;
 }
 
@@ -1044,10 +1051,11 @@ float learn_to_drive() {
 	int a[MAX_AGENTS], s[MAX_AGENTS], s_new[MAX_AGENTS];
 	float max_err;
 	float r[MAX_AGENTS];
-	int i;
+	int i, curr_s;
 	struct Agent agent;
 	struct Lidar car_sensors[3];
 	int d_l[MAX_AGENTS], d_f[MAX_AGENTS], d_r[MAX_AGENTS]; // lidar distances
+	int act;
 
 	max_err = 0.0;
 
@@ -1077,7 +1085,10 @@ float learn_to_drive() {
 
 		s_new[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
 		r[i] = get_reward(agent, d_l[i], d_f[i], d_r[i]);
-		printf(" reward: %f, action %d \n", r[i], a[i]);
+		// update max reward for debug
+		if (r[i] > max_reward)
+			max_reward = r[i];
+		//printf(" reward: %f, action %d \n", max_reward, a[i]);
 		agent.error += ql_updateQ(s[i], a[i], r[i], s_new[i]);
 		// update agent state
 		agent.state = s_new[i];
@@ -1087,12 +1098,14 @@ float learn_to_drive() {
 			max_err = agent.error;
 	}
 	pthread_mutex_unlock(&mux_agent);
-	//a = ql_egreedy_policy(s);
-	//s_new = next_state(a, agent_id);
-	//r = get_reward(s, s_new, agent_id);
-	//err += ql_updateQ(s, a, r, s_new);
-	
-	//episode++;
+	pthread_mutex_lock(&mux_cbuffer);
+	for(i = 0; i < BUF_LEN; i++) {
+		curr_s = s_new[0]; // save to graph the action of first agent only
+		act = ql_get_Q(curr_s, i);
+		push_to_cbuf(i, act, i);
+		//printf("s: %d, Q: %d\n", curr_s, act);
+	}
+	pthread_mutex_unlock(&mux_cbuffer);
 	// error handling is wrong !!  needs to be changed
 	return max_err/episode;
 }
@@ -1101,7 +1114,8 @@ void init_qlearn_params() {
 	int n_states, n_actions;
 
 	n_states = MAX_STATES_LIDAR*2;
-	n_actions = (MAX_THETA * 2) - 1;
+	//n_actions = (MAX_THETA * 2) - 1;
+	n_actions = (MAX_THETA * 2);
 	ql_init(n_states, n_actions);
 	// modify specific params by calling related function
 	ql_set_learning_rate(0.5);
