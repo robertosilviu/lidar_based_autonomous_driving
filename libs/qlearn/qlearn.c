@@ -131,7 +131,7 @@ int ql_egreedy_policy(int s) {
 		return ba;
 }
 
-float ql_updateQ(int s, int a, int r, int snew) {
+float ql_updateQ(int s, int a, float r, int snew) {
 	float q_target;	// target Q value
 	float td_err;	// TD error
 

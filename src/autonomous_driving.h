@@ -55,7 +55,7 @@
 #define MIN_A (-0.5*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
-#define MAX_AGENTS 2
+#define MAX_AGENTS 1
 #define CRASH_DIST 3
 #define INFERENCE 1
 #define TRAINING 0
@@ -197,7 +197,7 @@ struct Car update_car_model(struct Agent agent);
 void crash_check();
 float action_to_steering(int action_k);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);
-int get_reward(struct Agent agent, int d_left, int d_front, int d_right);
+float get_reward(struct Agent agent, int d_left, int d_front, int d_right);
 //int next_state(int a, int agent_id);
 float learn_to_drive();
 

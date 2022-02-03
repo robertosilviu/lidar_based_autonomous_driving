@@ -493,7 +493,7 @@ void* agent_task(void* arg) {
 
 				if((episode%100) == 0)
 					ql_reduce_expl();
-					
+
 				for(j = 0; j < MAX_AGENTS; j++) {
 						agents[j].alive = 1;
 						agents[j].car = new_car;
@@ -975,11 +975,41 @@ int next_state(int a, int agent_id) {
 	return s_new;
 }
 */
-int get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
-	int r = 0;
+float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
+	float r = 0;
 	//int d_left, d_front, d_right;
 	//struct Agent agent;
+	float track_pos; // distance between car's (x,y) and centre of track
+	float x, y, alpha, vx, vy;
+	int d_l, d_r;
+	track_pos = 0.0;
+	
+	// compute left distance perpendicular to car's (x,y) 
+	alpha = deg_to_rad(90.0);
+	x = BTM_X + (agent.car.x/SCALE);
+	y = SIM_Y - (BTM_Y + agent.car.y/SCALE);
+	d_l = read_sensor(x, y, alpha);
+	// compute right distance
+	alpha = deg_to_rad(-90.0);
+	x = BTM_X + (agent.car.x/SCALE);
+	y = SIM_Y - (BTM_Y + agent.car.y/SCALE);
+	d_r = read_sensor(x, y, alpha);
+	
+	// compute distance from track centre
+	if (d_r > d_l)
+		track_pos = d_r - (d_r + d_l)/2;
+	else 
+		track_pos = d_l - (d_r + d_l)/2;
 
+	// compute vx and vy
+	vx = agent.car.v * cos(agent.car.theta);
+	vy = agent.car.v * sin(agent.car.theta);
+	if(agent.alive == 0) {
+		r = RWD_CRASH;
+	} else {
+		r = ALPHA_REWARD * (vx - vy - fabs(track_pos));
+	}
+	/*
 	if (d_front == SMAX) {
 		if (agent.action.delta != 0)
 			r += RWD_TURN_STRAIGHT;
@@ -1006,12 +1036,14 @@ int get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 			r += RWD_CORRECT_TURN;
 	}
 
+	*/
 	return r;
 }
 
 float learn_to_drive() {
-	int a[MAX_AGENTS], s[MAX_AGENTS], s_new[MAX_AGENTS], r[MAX_AGENTS];
+	int a[MAX_AGENTS], s[MAX_AGENTS], s_new[MAX_AGENTS];
 	float max_err;
+	float r[MAX_AGENTS];
 	int i;
 	struct Agent agent;
 	struct Lidar car_sensors[3];
@@ -1045,6 +1077,7 @@ float learn_to_drive() {
 
 		s_new[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
 		r[i] = get_reward(agent, d_l[i], d_f[i], d_r[i]);
+		printf(" reward: %f, action %d \n", r[i], a[i]);
 		agent.error += ql_updateQ(s[i], a[i], r[i], s_new[i]);
 		// update agent state
 		agent.state = s_new[i];

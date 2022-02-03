@@ -9,7 +9,7 @@
 #define GAMMA0 0.9						// default discount factor
 #define DECAY0 0.95						// default epsilon decay rate
 #define EPSILON0 0.9
-
+#define ALPHA_REWARD 0.5
 static int n_states;
 static int n_actions;
 //static int goal_state;
@@ -42,7 +42,7 @@ void ql_reduce_expl();
 float ql_maxQ(int s);
 int ql_best_action(int s);
 int ql_egreedy_policy(int s);
-float ql_updateQ(int s, int a, int r, int snew);
+float ql_updateQ(int s, int a, float r, int snew);
 
 float frand(float xmin, float xmax);
 
