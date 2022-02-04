@@ -55,7 +55,7 @@
 #define MIN_A (-0.5*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
-#define MAX_AGENTS 4
+#define MAX_AGENTS 100
 #define CRASH_DIST 3
 #define INFERENCE 1
 #define TRAINING 0
@@ -71,26 +71,26 @@
 // handles command interpreter
 #define COM_INTERP_ID 1
 #define COM_INTERP_PRIO 40
-#define COM_INTERP_PER 40	// ms
-#define COM_INTERP_DLR 40
+#define COM_INTERP_PER 100	// ms
+#define COM_INTERP_DLR 100
 
 // handles agent state update 
 #define AGENT_ID 2
 #define AGENT_PRIO 10
-#define AGENT_PER 10	// ms
-#define AGENT_DLR 10
+#define AGENT_PER 35	// ms
+#define AGENT_DLR 35
 // handles sensors reading
 #define SENSORS_ID 3
 #define SENSORS_PRIO 10
-#define SENSORS_PER 10	// ms
-#define SENSORS_DLR 10
+#define SENSORS_PER 20	// ms
+#define SENSORS_DLR 20
 // handles neural network
 
 // handles graphics 
 #define GRAPHICS_ID 0
-#define GRAPHICS_PRIO 20
-#define GRAPHICS_PER 20	// ms
-#define GRAPHICS_DLR 20
+#define GRAPHICS_PRIO 5
+#define GRAPHICS_PER 25	// ms
+#define GRAPHICS_DLR 25
 
 #define Q_MAT_FILE_NAME "q_matrix.txt"
 /*-----------------------------------------------------------------------------*/

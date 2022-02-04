@@ -103,10 +103,10 @@ void init_scene() {
 
 void update_scene() {
 	// should be a for cycle for reach agent
-	crash_check();
 	draw_track();
 	draw_car();
 	draw_sensors();
+	//crash_check();
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
 
@@ -212,13 +212,15 @@ void crash_check() {
 	new_car.y = 0.0;
 	new_car.theta = 0.0;
 
-	for(i = 0; i< MAX_AGENTS; i++) {
-		dead_agents[MAX_AGENTS] = 0;
+	for(i = 0; i < MAX_AGENTS; i++) {
+		dead_agents[i] = 0;
 	}
+
 	pthread_mutex_lock(&mux_agent);
 	for(i = 0; i < MAX_AGENTS; i++) {
 		find_rect_vertices(vertices[i], 4, i);
 		// use y=mx +b
+		found = 0;
 		for(k = 0; k < 4; k++) {
 			found = check_color_px_in_line(
 						vertices[i][(k+1)%4].x,
@@ -229,10 +231,11 @@ void crash_check() {
 			if(found)
 				dead_agents[i] = 1;
 		}
-		
-		if( dead_agents[i] == 1) {
+
+		if (dead_agents[i] == 1) {
 			agents[i].alive = 0;
 			agents[i].car = new_car;
+			//printf("dead agent %d\n", i);
 			// at each restart the agent should change some parameters for the next simulation
 		}
 	}
@@ -473,6 +476,8 @@ void* agent_task(void* arg) {
 	new_car.theta = 0.0;
 
 	do {	
+		crash_check();
+
 		alive_flag = 0;
 		// need to update agent when crash occured
 		//for(i = 0; i < MAX_AGENTS; i++) {
@@ -500,11 +505,10 @@ void* agent_task(void* arg) {
 				for(j = 0; j < MAX_AGENTS; j++) {
 						agents[j].alive = 1;
 						agents[j].car = new_car;
-						//printf("Reset agent!\n");
+						//printf("Reset agent %d!\n", j);
 				}
 			}
 			pthread_mutex_unlock(&mux_agent);
-
 		//}
 
 		deadline_miss(AGENT_ID);
@@ -524,7 +528,7 @@ void* sensors_task(void* arg) {
 
 	do {
 		refresh_sensors();
-
+		
 		deadline_miss(SENSORS_ID);
 		wait_for_activation(i);
 	} while (!end);
@@ -1076,15 +1080,15 @@ float learn_to_drive() {
 void init_qlearn_params() {
 	int n_states, n_actions;
 
-	n_states = MAX_STATES_LIDAR*2;
+	n_states = MAX_STATES_LIDAR*MAX_STATES_LIDAR;
 	//n_actions = (MAX_THETA * 2) - 1;
 	n_actions = (MAX_THETA * 2);
 	ql_init(n_states, n_actions);
 	// modify specific params by calling related function
 	ql_set_learning_rate(0.5);
-	ql_set_discount_factor(0.9);
+	ql_set_discount_factor(0.7);
 	ql_set_expl_range(1.0, 0.01);
-	ql_set_expl_decay(0.95);
+	ql_set_expl_decay(0.75);
 }
 void save_q_matrix_to_file() {
 	FILE *fp;
