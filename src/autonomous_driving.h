@@ -12,12 +12,14 @@
 #define GRAPH_W 500
 //-------------------------------REINFORCEMENT LEARNING-------------------------
 #define RWD_CRASH -100
-#define RWD_ALIVE 1
-#define RWD_CORRECT_TURN 5
-#define RWD_WRONG_TURN -5
-#define RWD_STRAIGHT 6
-#define RWD_TURN_STRAIGHT -6
+#define RWD_ALIVE -1
+#define RWD_CORRECT_TURN -6
+#define RWD_WRONG_TURN -12
+#define RWD_STRAIGHT -4
+#define RWD_TURN_STRAIGHT -8
+
 #define MAX_STATES_LIDAR 50
+#define ACTIONS_STEP 5 // 5 degree resolution
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
 #define WIN_Y 1024
@@ -33,14 +35,16 @@
 #define XCEN_SIM (SIM_X/2)
 #define YCEN_SIM (SIM_Y/2)
 #define SCALE 0.16 // 1px = 0.16m
-#define T_SCALE 0.4
+#define T_SCALE 4.0
 
-#define INIT_CAR_X 500
-#define INIT_CAR_Y 350
+#define INIT_CAR_X 570
+#define INIT_CAR_Y 650
+
 #define BTM_X INIT_CAR_X // (x,y) coordinates with origin on bottomo left
 #define BTM_Y SIM_Y-INIT_CAR_Y
-#define MAX_THETA 15
-#define MIN_THETA -15
+#define MAX_THETA 30
+#define MIN_THETA -30
+#define INIT_THETA 90.0
 #define LF 3.0					// car length to front from centre of gravity
 #define LR 2.0					// car length to back from centre of gravity
 #define WD 2.0					// car width
@@ -61,7 +65,7 @@
 #define TRAINING 0
 #define TRAIN_VEL 5.0
 
-#define BUF_LEN (MAX_THETA*2)
+#define BUF_LEN ((MAX_THETA*2)/ACTIONS_STEP)+1
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
 #define STEP 1 // lidar resolution(m) = 1px
@@ -157,12 +161,14 @@ int end = 0;
 char debug[LEN];
 int mode = TRAINING;
 struct Lidar sensors[MAX_AGENTS][3];
+int disable_sensors = 0;
 
 struct cbuf graph_buff;
-int episode = 0;
+int episode = 1;
 int graph_index = 0;
 
 float max_reward = RWD_CRASH;
+float conv_delta = 0.0;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
 //---------------------------------------------------------------------------

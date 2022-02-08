@@ -2,14 +2,14 @@
 #define QLEARN_H_
 
 #define MAX_STATES 2600
-#define MAX_ACTIONS 50
+#define MAX_ACTIONS 15
 #define ALPHA0	1.0						// default learning rate
 #define EPSINI 0.7						// initial exploration factor
 #define EPSFIN 0.01						// final exploration factor
 #define GAMMA0 0.9						// default discount factor
 #define DECAY0 0.95						// default epsilon decay rate
-#define EPSILON0 0.7
-#define ALPHA_REWARD 0.03
+#define EPSILON0 0.6
+#define ALPHA_REWARD 1.0
 static int n_states;
 static int n_actions;
 //static int goal_state;
@@ -25,20 +25,20 @@ static float epsilon;					// actual exploration probability
 //----------------------------
 //	QL matrice
 //----------------------------
-static int Q[MAX_STATES][MAX_ACTIONS];
+static float Q[MAX_STATES][MAX_ACTIONS];
 
 void ql_init(int ns, int na);
 void ql_set_learning_rate(float lr);
 void ql_set_discount_factor(float df);
 void ql_set_expl_range(float ini_e, float fin_e);
 void ql_set_expl_decay(float d);
-void ql_set_Q_matrix(int s, int a, int val);
+void ql_set_Q_matrix(int s, int a, float val);
 
 float ql_get_learning_rate();
 float ql_get_discount_factor();
 float ql_get_expl_decay();
 float ql_get_epsilon();
-int ql_get_Q(int s, int a);
+float ql_get_Q(int s, int a);
 int ql_get_nstates();
 int ql_get_nactions();
 
@@ -49,5 +49,5 @@ int ql_egreedy_policy(int s);
 float ql_updateQ(int s, int a, float r, int snew);
 
 float frand(float xmin, float xmax);
-
+float evaluate_convergence(float prev_errr, float curr_err);
 #endif

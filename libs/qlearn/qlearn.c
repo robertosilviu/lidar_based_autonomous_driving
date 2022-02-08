@@ -36,7 +36,7 @@ void ql_init(int ns, int na) {
 
 	for(s = 0; s < n_states; s++) {
 		for(a = 0; a < n_states; a++) {
-			Q[s][a] = -100;
+			Q[s][a] = 0.0;
 		}
 	}
 
@@ -63,7 +63,7 @@ void ql_set_expl_decay(float d) {
 	printf("Exploration decay: decay = %f\n", decay);
 }
 
-void ql_set_Q_matrix(int s, int a, int val) {
+void ql_set_Q_matrix(int s, int a, float val) {
 
 	if (s >= n_states) {
 		printf("ERROR: current state index greater than STATES dimension: %d > %d\n", s, n_states);
@@ -94,7 +94,17 @@ float ql_get_epsilon() {
 	return epsilon;
 }
 
-int ql_get_Q(int s, int a) {
+float ql_get_Q(int s, int a) {
+	if (s >= n_states) {
+		printf("ERROR: current state index greater than STATES dimension: %d > %d\n", s, n_states);
+		exit(1);
+	}
+
+	if (a >= n_actions) {
+		printf("ERROR: current action index greater than ACTIONS dimension: %d > %d\n", a, n_actions);
+		exit(1);
+	}
+
 	return Q[s][a];
 }
 
@@ -114,8 +124,8 @@ void ql_reduce_expl() {
 }
 
 float ql_maxQ(int s) {
-	int a, m;
-	//float m;
+	int a;
+	float m;
 
 	m = Q[s][0];
 
@@ -131,8 +141,8 @@ float ql_maxQ(int s) {
 }
 
 int ql_best_action(int s) {
-	int a, ba, m;
-	//float m;
+	int a, ba;
+	float m;
 
 	m = Q[s][0];
 	ba = 0;
@@ -168,7 +178,11 @@ float ql_updateQ(int s, int a, float r, int snew) {
 	q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q[s][a];
 	Q[s][a] = Q[s][a] + alpha*td_err;
-	//printf("Q: %d, s: %d \n", Q[s][a], s);
+	//printf("Q: %f, td_err: %f \n", Q[s][a], td_err);
 
 	return fabs(td_err);
+}
+
+float evaluate_convergence(float prev_errr, float curr_err) {
+	printf("to do\n");
 }
