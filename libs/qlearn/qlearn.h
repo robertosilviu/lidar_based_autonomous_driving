@@ -1,15 +1,25 @@
 #ifndef QLEARN_H_
 #define QLEARN_H_
 
-#define MAX_STATES 2600
+#define PRINTLINE printf("LINE: %d\n", __LINE__)
+
+#define MAX_STATES 500
 #define MAX_ACTIONS 15
 #define ALPHA0	1.0						// default learning rate
 #define EPSINI 0.7						// initial exploration factor
 #define EPSFIN 0.01						// final exploration factor
 #define GAMMA0 0.9						// default discount factor
 #define DECAY0 0.95						// default epsilon decay rate
-#define EPSILON0 0.6
+#define EPSILON0 0.3
 #define ALPHA_REWARD 1.0
+
+#define RWD_CRASH -100
+#define RWD_ALIVE 1
+#define RWD_CORRECT_TURN 5
+#define RWD_WRONG_TURN -4
+#define RWD_STRAIGHT 2
+#define RWD_TURN_STRAIGHT -4
+
 static int n_states;
 static int n_actions;
 //static int goal_state;
@@ -49,5 +59,5 @@ int ql_egreedy_policy(int s);
 float ql_updateQ(int s, int a, float r, int snew);
 
 float frand(float xmin, float xmax);
-float evaluate_convergence(float prev_errr, float curr_err);
+//float evaluate_convergence(float prev_errr, float curr_err);
 #endif

@@ -11,14 +11,14 @@
 #define GRAPH_H 300
 #define GRAPH_W 500
 //-------------------------------REINFORCEMENT LEARNING-------------------------
-#define RWD_CRASH -100
-#define RWD_ALIVE -1
-#define RWD_CORRECT_TURN -6
-#define RWD_WRONG_TURN -12
-#define RWD_STRAIGHT -4
-#define RWD_TURN_STRAIGHT -8
+#define RWD_CRASH -500
+#define RWD_ALIVE 1
+#define RWD_CORRECT_TURN 5
+#define RWD_WRONG_TURN -4
+#define RWD_STRAIGHT 2
+#define RWD_TURN_STRAIGHT -4
 
-#define MAX_STATES_LIDAR 50
+#define MAX_STATES_LIDAR 20
 #define ACTIONS_STEP 5 // 5 degree resolution
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
@@ -59,12 +59,13 @@
 #define MIN_A (-0.5*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
-#define MAX_AGENTS 100
+#define MAX_AGENTS 1
 #define CRASH_DIST 3
 #define INFERENCE 1
 #define TRAINING 0
 #define TRAIN_VEL 5.0
 
+#define POOL_DIM 6
 #define BUF_LEN ((MAX_THETA*2)/ACTIONS_STEP)+1
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
@@ -169,6 +170,11 @@ int graph_index = 0;
 
 float max_reward = RWD_CRASH;
 float conv_delta = 0.0;
+
+float init_x_offset = 0;
+float init_y_offset = 0;
+float pose_pool[POOL_DIM][3]; // different initial poses on track to help agent learn
+int pool_index = 0;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
 //---------------------------------------------------------------------------
@@ -213,6 +219,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right);
 float learn_to_drive();
 void save_Q_matrix_to_file();
 void read_Q_matrix_from_file();
+void init_pool_poses();
 //-------------------------------- UTILS --------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);

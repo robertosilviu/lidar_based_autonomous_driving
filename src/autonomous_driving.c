@@ -70,6 +70,7 @@ void init() {
 	debug_bmp = create_bitmap(w, h);
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
 	// track window
+	init_pool_poses();
 	init_agent();
 	init_qlearn_params();
 	init_scene();
@@ -209,9 +210,9 @@ void crash_check() {
 	struct ViewPoint vertices[MAX_AGENTS][4];
 	// initialize empty car to reset dead agent's car
 	new_car.v = 0.0;
-	new_car.x = 0.0;
-	new_car.y = 0.0;
-	new_car.theta = deg_to_rad(INIT_THETA);
+	new_car.x = pose_pool[pool_index][0];
+	new_car.y = pose_pool[pool_index][1];
+	new_car.theta = pose_pool[pool_index][2];
 
 	for(i = 0; i < MAX_AGENTS; i++) {
 		dead_agents[i] = 0;
@@ -246,8 +247,9 @@ void crash_check() {
 
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	// use y=mx +b
-	int col, x, y, min_x, max_x, min_y, max_y, j;
-	float m, b;
+	int col;
+	//int x, y, min_x, max_x, min_y, max_y, j;
+	//float m, b;
 
 	col = getpixel(track_bmp, x0, y0);
 	if(col == color)
@@ -382,17 +384,17 @@ void* display_task(void* arg) {
 
 void* agent_task(void* arg) {
 	int i, j, alive_flag;
-	float progress = 0.0;
+	//float progress = 0.0;
 	struct Car new_car;
 
 	i = get_task_index(arg);
 	set_activation(i);
 
 	// initialize empty car to reset dead agent's car
-	new_car.v = TRAIN_VEL;
-	new_car.x = 0.0;
-	new_car.y = 0.0;
-	new_car.theta = deg_to_rad(INIT_THETA);
+	//new_car.x = 0.0;
+	//new_car.y = 0.0;
+	//new_car.theta = deg_to_rad(INIT_THETA);
+	
 
 	do {	
 		crash_check();
@@ -419,11 +421,19 @@ void* agent_task(void* arg) {
 			if(alive_flag == 0) {
 				episode++;
 
-				if((episode%1000) == 0)
-					ql_reduce_expl();
+				if((episode%100) == 0) {
+					//ql_reduce_expl();
+					// change initial position to improve training
+					pool_index = (pool_index + 1) % POOL_DIM;
+					printf("Changing initial pose!\n");
+				}
 
 				for(j = 0; j < MAX_AGENTS; j++) {
 						agents[j].alive = 1;
+						new_car.v = TRAIN_VEL;
+						new_car.x = pose_pool[pool_index][0];
+						new_car.y = pose_pool[pool_index][1];
+						new_car.theta = pose_pool[pool_index][2];
 						agents[j].car = new_car;
 						//printf("Reset agent %d!\n", j);
 				}
@@ -435,7 +445,7 @@ void* agent_task(void* arg) {
 		wait_for_activation(i);
 	} while (!end);
 	// save learning Q matrix on file for further use
-	save_q_matrix_to_file();
+	save_Q_matrix_to_file();
 
 	return NULL;
 }
@@ -489,7 +499,7 @@ void* comms_task(void* arg) {
 					//car.v -= 1;
 					break;
 				case KEY_LEFT:
-					delta += 1.0;
+					delta += 5.0;
 					if (delta > MAX_THETA)
 						delta = MAX_THETA;
 					act.delta = deg_to_rad(delta);
@@ -574,9 +584,9 @@ void init_agent() {
 	
 	printf("Initializing agent...\n");
 
-	vehicle.x = 0;
-	vehicle.y = 0;
-	vehicle.theta = deg_to_rad(90.0);
+	vehicle.x = pose_pool[pool_index][0];
+	vehicle.y = pose_pool[pool_index][1];
+	vehicle.theta = pose_pool[pool_index][2];
 	vehicle.v = TRAIN_VEL;
 	//vehicle.a = 0.0;
 	
@@ -587,6 +597,33 @@ void init_agent() {
 		agents[i].error = 0.0;
 		agents[i].state = 0; // should be checked if it is ok to use a wrong state
 	}
+}
+
+void init_pool_poses() {
+	pose_pool[0][0] = 0.0;
+	pose_pool[0][1] = 0.0;
+	pose_pool[0][2] = deg_to_rad(90.0);
+
+	pose_pool[1][0] = -50.0;
+	pose_pool[1][1] = 0.0;
+	pose_pool[1][2] = deg_to_rad(90.0);
+
+	pose_pool[2][0] = -75.0;
+	pose_pool[2][1] = 50.0;
+	pose_pool[2][2] = deg_to_rad(90.0);
+
+	pose_pool[3][0] = -60.0;
+	pose_pool[3][1] = 70.0;
+	pose_pool[3][2] = deg_to_rad(270.0);
+
+	pose_pool[4][0] = 10.0;
+	pose_pool[4][1] = 57.0;
+	pose_pool[4][2] = deg_to_rad(180.0);
+
+	pose_pool[5][0] = 20.0;
+	pose_pool[5][1] = 20.0;
+	pose_pool[5][2] = deg_to_rad(270.0);
+
 }
 
 void show_dmiss() {
@@ -748,7 +785,6 @@ struct Car update_car_model(struct Agent agent) {
 	float omega;
 	// /float friction;
 	float norm_theta, theta_deg;
-	int i;
 
 	//pthread_mutex_lock(&mux_agent);
 	dt = T_SCALE * (float)AGENT_PER/1000;
@@ -785,17 +821,26 @@ struct Car update_car_model(struct Agent agent) {
 	//friction = old_state.v * (C_R + C_A * old_state.v);
 	new_state.v = old_state.v + dt * (act.a); // - friction);
 	// normalize theta to 0 - 360
-	theta_deg = rad_to_deg(old_state.theta);
-	norm_theta = theta_deg - (floor(theta_deg/360.0) * 360.0);
-	norm_theta = deg_to_rad(norm_theta);
+	//theta_deg = rad_to_deg(old_state.theta);
+	//norm_theta = theta_deg - (floor(theta_deg/360.0) * 360.0);
+	//norm_theta = deg_to_rad(norm_theta);
 	//norm_theta = atan2(sin(old_state.theta), cos(old_state.theta));
-	vx = old_state.v*cos(norm_theta);
-	vy = old_state.v*sin(norm_theta);
-	omega = old_state.v * tan(act.delta) / WHEELBASE;
+	
+	//theta_deg = rad_to_deg(norm_theta) + 180;
+	//norm_theta = deg_to_rad(theta_deg);
+
+	vx = old_state.v*cos(old_state.theta);
+	vy = old_state.v*sin(old_state.theta);
+
 	new_state.x = old_state.x + (vx * dt);
 	new_state.y = old_state.y + (vy * dt);
-	new_state.theta = norm_theta + (omega * dt);
 
+	omega = old_state.v * tan(act.delta) / WHEELBASE;
+	norm_theta = old_state.theta + (omega * dt);
+	norm_theta = atan2(-sin(norm_theta), -cos(norm_theta)) + M_PI;
+	//new_state.theta = norm_theta + (omega * dt);
+	new_state.theta = norm_theta;
+	//printf("y: %f, theta: %f\n", new_state.y, rad_to_deg(norm_theta));
 	return new_state;
 	//}
 	//pthread_mutex_unlock(&mux_agent);
@@ -921,7 +966,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	//int d_left, d_front, d_right;
 	//struct Agent agent;
 	float track_pos; // distance between car's (x,y) and centre of track
-	float x, y, alpha, vx, vy, ca, sa;
+	float x, y, alpha; // vx, vy, ca, sa;
 	int d_l, d_r;
 	track_pos = 0.0;
 	
@@ -946,10 +991,10 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	track_pos = d_l - d_r;
 	//printf("d_l: %d, d_r: %d, t_p: %f\n", d_l, d_r, track_pos);
 	// compute vx and vy
-	ca = cos(agent.car.theta);
-	sa = sin(agent.car.theta);
-	vx = agent.car.v * ca;
-	vy = agent.car.v * sa;
+	//ca = cos(agent.car.theta);
+	//sa = sin(agent.car.theta);
+	//vx = agent.car.v * ca;
+	//vy = agent.car.v * sa;
 	if(agent.alive == 0) {
 		return RWD_CRASH;
 	} else {
@@ -957,6 +1002,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		// reward for staying alive
 		r += RWD_ALIVE;
 		// reward for correct turn
+		
 		if (d_right > d_left) {
 			if (agent.action.delta < 0)
 				r += RWD_CORRECT_TURN;
@@ -969,6 +1015,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 			else
 				r += RWD_WRONG_TURN;
 		}
+		
 		// reward for no turn on straight
 		if ((d_front > d_left) && (d_front > d_right)) {
 			if (fabs(agent.action.delta) < deg_to_rad(5))
@@ -979,7 +1026,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		// reward for keeping the car near the center
 		// normalize to track length
 		track_pos = track_pos/12;
-		r -= fabs(track_pos);
+		//r -= fabs(track_pos);
 	}
 	//printf("r: %f\n", r);
 	//printf("r: %f, vx: %f, vy: %f, track_pos: %f\n", r, vx, vy, agent.car.v*fabs(track_pos));
@@ -998,7 +1045,7 @@ float learn_to_drive() {
 	int act;
 
 	max_err = 0.0;
-	err == 0.0;
+	err = 0.0;
 
 	pthread_mutex_lock(&mux_sensors);
 	for(i = 0; i < MAX_AGENTS; i++) {
@@ -1059,17 +1106,17 @@ void init_qlearn_params() {
 	n_states = MAX_STATES_LIDAR*MAX_STATES_LIDAR;
 	//n_actions = (MAX_THETA * 2) - 1;
 	n_actions = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
-
+	printf("n_states: %d\n",n_states);
 	ql_init(n_states, n_actions);
 	// modify specific params by calling related function
 	ql_set_learning_rate(1.0);
 	ql_set_discount_factor(0.9);
-	ql_set_expl_range(0.6, 0.01);
-	ql_set_expl_decay(0.75);
+	ql_set_expl_range(0.3, 0.01);
+	ql_set_expl_decay(0.95);
 }
-void save_q_matrix_to_file() {
+void save_Q_matrix_to_file() {
 	FILE *fp;
-	int n_states, n_actions, result;
+	int n_states, n_actions;
 	int i, j;
 	n_states = ql_get_nstates();
 	n_actions = ql_get_nactions();
@@ -1105,7 +1152,7 @@ void read_Q_matrix_from_file() {
 	int dim_states_f, dim_actions_f, n_states, n_actions;
 	char buf[50];
 	char q_buff[1024];
-	int result, size;
+	int size;
 	char *ptr;
 	float val;
 	int i, j; // indexes to use for matrix
@@ -1122,7 +1169,7 @@ void read_Q_matrix_from_file() {
 		exit(1);
 	}
 	// check saved Q matrix dimensions from file
-	if (fgets(buf, size, fp) != -1) {
+	if (fgets(buf, size, fp) != NULL) {
 		sscanf(buf, " %d %d", &dim_states_f, &dim_actions_f);
 		if (dim_states_f != n_states) {
 			printf("ERROR: STATES dimension different from current Q matrix configuration!\n");

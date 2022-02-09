@@ -16,7 +16,6 @@ void ql_init(int ns, int na) {
 	int s, a;
 	n_states = ns;
 	n_actions = na;
-
 	if(n_states > MAX_STATES) {
 		printf("Number of states exceeds max limit!\n");
 		exit(1);
@@ -33,13 +32,12 @@ void ql_init(int ns, int na) {
 	fin_eps = EPSFIN;
 	decay = DECAY0;
 	epsilon = EPSILON0;
-
 	for(s = 0; s < n_states; s++) {
 		for(a = 0; a < n_states; a++) {
+			//printf("s: %d\n", s);
 			Q[s][a] = 0.0;
 		}
 	}
-
 }
 
 void ql_set_learning_rate(float lr) {
@@ -137,6 +135,7 @@ float ql_maxQ(int s) {
 			
 	}
 	//printf("m: %d\n", m);
+
 	return m;
 }
 
@@ -153,7 +152,10 @@ int ql_best_action(int s) {
 			ba = a;
 		}
 	}
-
+	// when value is zero return casual action
+	if (Q[s][ba] == 0)
+		ba = rand()%n_actions;
+	
 	return ba;
 }
 
@@ -174,15 +176,25 @@ int ql_egreedy_policy(int s) {
 float ql_updateQ(int s, int a, float r, int snew) {
 	float q_target;	// target Q value
 	float td_err;	// TD error
+	float old_q;
+	//q_target = r + gam*ql_maxQ(snew);
+	//td_err = q_target - Q[s][a];
+	//Q[s][a] = Q[s][a] + alpha*td_err;
+	if (r == RWD_CRASH)
+		q_target = r + gam*ql_maxQ(s);
+	else
+		q_target = r + gam*ql_maxQ(snew);
 
-	q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q[s][a];
-	Q[s][a] = Q[s][a] + alpha*td_err;
+	old_q = Q[s][a];
+	Q[s][a] = (1 - alpha) * Q[s][a] + alpha * (q_target);
 	//printf("Q: %f, td_err: %f \n", Q[s][a], td_err);
 
-	return fabs(td_err);
-}
 
+	return fabs(Q[s][a] - old_q);
+}
+/*
 float evaluate_convergence(float prev_errr, float curr_err) {
 	printf("to do\n");
 }
+*/
