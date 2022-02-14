@@ -18,7 +18,7 @@
 #define RWD_STRAIGHT 2
 #define RWD_TURN_STRAIGHT -4
 
-#define MAX_STATES_LIDAR 20
+#define MAX_STATES_LIDAR 50
 #define ACTIONS_STEP 5 // 5 degree resolution
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
@@ -59,7 +59,7 @@
 #define MIN_A (-0.5*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
-#define MAX_AGENTS 1
+#define MAX_AGENTS 100
 #define CRASH_DIST 3
 #define INFERENCE 1
 #define TRAINING 0
@@ -84,6 +84,11 @@
 #define AGENT_PRIO 10
 #define AGENT_PER 35	// ms
 #define AGENT_DLR 35
+// handles learning process 
+#define LEARNING_ID 4
+#define LEARNING_PRIO 10
+#define LEARNING_PER 50	// ms
+#define LEARNING_DLR 50
 // handles sensors reading
 #define SENSORS_ID 3
 #define SENSORS_PRIO 10
@@ -134,8 +139,9 @@ struct Agent {
 	struct Car car;
 	int alive; // 1 = alive, 0 = dead due to collision with track borders
 	float distance;	// distance raced on track 
-	struct Controls action;
+	struct Controls action; // should save only action id and decode it 
 	int state;
+	int a_id;
 	float error;
 	// da aggiungere il reward
 };
@@ -202,26 +208,31 @@ void show_rl_graph();
 void* comms_task(void* arg);
 void* display_task(void* arg);
 void* agent_task(void* arg);
+void* learning_task(void* arg);
 void* sensors_task(void* arg);
 
 //-------------------------------- Sensors -----------------------------------
 int read_sensor(int x0, int y0, float alpha);
 void refresh_sensors();
 void get_updated_lidars_distance(struct Car car, struct Lidar car_sensors[]);
+//-------------------------------- Commands Interpreter -----------------------------------
+char interpreter();
 //-------------------------------- Reinforcement Learning --------------------
 
 void init_qlearn_params();
 struct Car update_car_model(struct Agent agent);
 void crash_check();
+int is_car_offtrack(struct Car car);
 float action_to_steering(int action_k);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);
 float get_reward(struct Agent agent, int d_left, int d_front, int d_right);
 float learn_to_drive();
+float single_thread_learning();
 void save_Q_matrix_to_file();
 void read_Q_matrix_from_file();
 void init_pool_poses();
 //-------------------------------- UTILS --------------------------------------
-void find_rect_vertices(struct ViewPoint vertices[], int size, int id);
+void find_rect_vertices(struct ViewPoint vertices[], int size, struct Car car);
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);
 float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);

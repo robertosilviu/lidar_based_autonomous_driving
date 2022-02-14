@@ -3,14 +3,14 @@
 
 #define PRINTLINE printf("LINE: %d\n", __LINE__)
 
-#define MAX_STATES 500
+#define MAX_STATES 2510
 #define MAX_ACTIONS 15
 #define ALPHA0	1.0						// default learning rate
 #define EPSINI 0.7						// initial exploration factor
 #define EPSFIN 0.01						// final exploration factor
 #define GAMMA0 0.9						// default discount factor
 #define DECAY0 0.95						// default epsilon decay rate
-#define EPSILON0 0.3
+#define EPSILON0 0.1
 #define ALPHA_REWARD 1.0
 
 #define RWD_CRASH -100
@@ -57,6 +57,7 @@ float ql_maxQ(int s);
 int ql_best_action(int s);
 int ql_egreedy_policy(int s);
 float ql_updateQ(int s, int a, float r, int snew);
+float updateQ_sarsa(int s, int a, float r, int snew, int anew);
 
 float frand(float xmin, float xmax);
 //float evaluate_convergence(float prev_errr, float curr_err);

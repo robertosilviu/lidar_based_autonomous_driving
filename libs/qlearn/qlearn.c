@@ -33,8 +33,8 @@ void ql_init(int ns, int na) {
 	decay = DECAY0;
 	epsilon = EPSILON0;
 	for(s = 0; s < n_states; s++) {
-		for(a = 0; a < n_states; a++) {
-			//printf("s: %d\n", s);
+		for(a = 0; a < n_actions; a++) {
+			//printf("s: %d, a: %d\n", s, a);
 			Q[s][a] = 0.0;
 		}
 	}
@@ -190,6 +190,19 @@ float ql_updateQ(int s, int a, float r, int snew) {
 	Q[s][a] = (1 - alpha) * Q[s][a] + alpha * (q_target);
 	//printf("Q: %f, td_err: %f \n", Q[s][a], td_err);
 
+
+	return fabs(Q[s][a] - old_q);
+}
+
+float updateQ_sarsa(int s, int a, float r, int snew, int anew) {
+	float td_err;
+	float old_q;
+	// get action from new state based on e_greedy policy
+	//a_new = ql_egreedy_policy(snew);
+	//printf("s: %d, a: %d \n", s, a);
+	//printf("q: %f \n", Q[s][a]);
+	old_q = Q[s][a];
+	Q[s][a] = Q[s][a] + alpha * (r + gam*Q[snew][anew] - Q[s][a]);
 
 	return fabs(Q[s][a] - old_q);
 }
