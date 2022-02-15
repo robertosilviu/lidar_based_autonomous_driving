@@ -38,6 +38,13 @@ void ql_init(int ns, int na) {
 			Q[s][a] = 0.0;
 		}
 	}
+	// Q(lambda) learning
+	for(s = 0; s < n_states; s++) {
+		for(a = 0; a < n_actions; a++) {
+			//printf("s: %d, a: %d\n", s, a);
+			T_r[s][a] = 0.0;
+		}
+	}
 }
 
 void ql_set_learning_rate(float lr) {
@@ -54,6 +61,11 @@ void ql_set_expl_range(float ini_e, float fin_e) {
 	ini_eps = ini_e;
 	fin_eps = fin_e;
 	printf("Eploration probability: ini_eps = %f, fin_eps = %f\n", ini_e, fin_e);
+}
+
+void ql_set_expl_factor(float e) {
+	epsilon = e;
+	printf("Exploration factor: epsilon = %f\n", epsilon);
 }
 
 void ql_set_expl_decay(float d) {
@@ -74,6 +86,21 @@ void ql_set_Q_matrix(int s, int a, float val) {
 	}
 
 	Q[s][a] = val;
+}
+
+void ql_set_Tr_matrix(int s, int a, float val) {
+
+	if (s >= n_states) {
+		printf("ERROR: current state index greater than STATES dimension: %d > %d\n", s, n_states);
+		exit(1);
+	}
+
+	if (a >= n_actions) {
+		printf("ERROR: current action index greater than ACTIONS dimension: %d > %d\n", a, n_actions);
+		exit(1);
+	}
+
+	T_r[s][a] = val;
 }
 
 float ql_get_learning_rate() {
@@ -106,6 +133,20 @@ float ql_get_Q(int s, int a) {
 	return Q[s][a];
 }
 
+float ql_get_Tr(int s, int a) {
+	if (s >= n_states) {
+		printf("ERROR: current state index greater than STATES dimension: %d > %d\n", s, n_states);
+		exit(1);
+	}
+
+	if (a >= n_actions) {
+		printf("ERROR: current action index greater than ACTIONS dimension: %d > %d\n", a, n_actions);
+		exit(1);
+	}
+
+	return T_r[s][a];
+}
+
 int ql_get_nstates() {
 	return n_states;
 }
@@ -127,7 +168,7 @@ float ql_maxQ(int s) {
 
 	m = Q[s][0];
 
-	for(a = 1; a < n_states; a++) {
+	for(a = 1; a < n_actions; a++) {
 		if (Q[s][a] > m) {
 			m = Q[s][a];
 			//printf("q: %d\n", Q[s][a]);
@@ -135,7 +176,6 @@ float ql_maxQ(int s) {
 			
 	}
 	//printf("m: %d\n", m);
-
 	return m;
 }
 
@@ -180,11 +220,14 @@ float ql_updateQ(int s, int a, float r, int snew) {
 	//q_target = r + gam*ql_maxQ(snew);
 	//td_err = q_target - Q[s][a];
 	//Q[s][a] = Q[s][a] + alpha*td_err;
+	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
+	
 	if (r == RWD_CRASH)
 		q_target = r + gam*ql_maxQ(s);
 	else
 		q_target = r + gam*ql_maxQ(snew);
 
+	//PRINTLINE;
 	td_err = q_target - Q[s][a];
 	old_q = Q[s][a];
 	Q[s][a] = (1 - alpha) * Q[s][a] + alpha * (q_target);
@@ -193,6 +236,34 @@ float ql_updateQ(int s, int a, float r, int snew) {
 
 	return fabs(Q[s][a] - old_q);
 }
+
+float ql_lambda_updateQ(int s, int a, float r, int snew) {
+	float max_s, max_snew;
+	float e, e_dot;
+	int i, j;
+	float old_q;
+
+	old_q = Q[s][a];
+	max_s = ql_maxQ(s);
+	max_snew = ql_maxQ(snew);
+
+	e_dot = r + gam*max_snew - Q[s][a];
+	e = r + gam*max_snew - max_s;
+
+	for(i = 0; i < n_states; i++) {
+		for(j = 0; j < n_actions; j++) {
+			//printf("s: %d, a: %d\n", s, a);
+			T_r[i][j] = gam*lambda*T_r[i][j];
+			Q[i][j] = Q[i][j] + alpha*T_r[i][j]*e;
+		}
+	}
+
+	Q[s][a] = Q[s][a] + alpha*e_dot;
+	T_r[s][a] = T_r[s][a] + 1;
+
+	return fabs(Q[s][a] - old_q);
+}
+
 
 float updateQ_sarsa(int s, int a, float r, int snew, int anew) {
 	float td_err;

@@ -521,10 +521,12 @@ void* learning_task(void* arg) {
 		}
 		// no agent alive, start new episode
 		if(alive_flag == 0) {
+			// reset max TD_ERROR
+			conv_delta = 0;
 			episode++;
 			
 			if((episode%100) == 0) {
-				//ql_reduce_expl();
+				ql_reduce_expl();
 				// change initial position to improve training
 				pool_index = (pool_index + 1) % POOL_DIM;
 				printf("Changing initial pose!\n");
@@ -572,6 +574,7 @@ void* learning_task(void* arg) {
 	} while (!end);
 	// save learning Q matrix on file for further use
 	save_Q_matrix_to_file();
+	save_Tr_matrix_to_file();
 
 	return NULL;
 }
@@ -664,6 +667,7 @@ char interpreter() {
 				printf("Loading Q matrix from file %s\n", Q_MAT_FILE_NAME);
 				pthread_mutex_lock(&mux_q_matrix);
 				read_Q_matrix_from_file();
+				read_Tr_matrix_from_file();
 				pthread_mutex_unlock(&mux_q_matrix);
 				break;
 			case KEY_D:
@@ -743,20 +747,36 @@ void init_pool_poses() {
 	pose_pool[1][2] = deg_to_rad(90.0);
 
 	pose_pool[2][0] = -75.0;
-	pose_pool[2][1] = 50.0;
-	pose_pool[2][2] = deg_to_rad(90.0);
+	pose_pool[2][1] = 82.0;
+	pose_pool[2][2] = deg_to_rad(15.0);
 
 	pose_pool[3][0] = -60.0;
 	pose_pool[3][1] = 70.0;
 	pose_pool[3][2] = deg_to_rad(270.0);
 
-	pose_pool[4][0] = 10.0;
-	pose_pool[4][1] = 57.0;
-	pose_pool[4][2] = deg_to_rad(180.0);
+	pose_pool[4][0] = -25.0;
+	pose_pool[4][1] = 55.0;
+	pose_pool[4][2] = deg_to_rad(270.0);
 
 	pose_pool[5][0] = 20.0;
 	pose_pool[5][1] = 20.0;
 	pose_pool[5][2] = deg_to_rad(270.0);
+
+	pose_pool[6][0] = -45.0;
+	pose_pool[6][1] = 60.0;
+	pose_pool[6][2] = deg_to_rad(90.0);
+
+	pose_pool[7][0] = -5.0;
+	pose_pool[7][1] = 85.0;
+	pose_pool[7][2] = deg_to_rad(0.0);
+
+	pose_pool[8][0] = -5.0;
+	pose_pool[8][1] = 45.0;
+	pose_pool[8][2] = deg_to_rad(0.0);
+
+	pose_pool[9][0] = 19.0;
+	pose_pool[9][1] = 75.0;
+	pose_pool[9][2] = deg_to_rad(270.0);
 
 }
 
@@ -1105,22 +1125,24 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	//int d_left, d_front, d_right;
 	//struct Agent agent;
 	float track_pos; // distance between car's (x,y) and centre of track
-	float x, y, alpha; // vx, vy, ca, sa;
+	float x, y, alpha;
+	//float vx, vy, ca, sa;
 	int d_l, d_r;
 
 	track_pos = 0.0;
 	
 	// compute left distance perpendicular to car's (x,y) 
-	alpha = deg_to_rad(+90.0);
+	alpha = deg_to_rad(agent.car.theta + 90.0);
 	x = BTM_X + (agent.car.x/SCALE);
 	y = SIM_Y - (BTM_Y + agent.car.y/SCALE);
 	d_l = read_sensor(x, y, alpha);
 	// compute right distance
-	alpha = deg_to_rad(-90.0);
+	alpha = deg_to_rad(agent.car.theta - 90.0);
 	x = BTM_X + (agent.car.x/SCALE);
 	y = SIM_Y - (BTM_Y + agent.car.y/SCALE);
 	d_r = read_sensor(x, y, alpha);
 	
+	//printf("d_l: %d, d_r: %d \n", d_l, d_r);
 	// compute distance from track centre
 	/*
 	if (d_r > d_l)
@@ -1128,7 +1150,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	else 
 		track_pos = d_l - (d_r + d_l)/2;
 	*/
-	track_pos = d_l - d_r;
+	track_pos = fabs(d_left - d_right)/100;
 	//printf("d_l: %d, d_r: %d, t_p: %f\n", d_l, d_r, track_pos);
 	// compute vx and vy
 	//ca = cos(agent.car.theta);
@@ -1144,6 +1166,13 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		// reward for staying alive
 		return RWD_ALIVE;
 		//r += RWD_ALIVE;
+		// increase reward when front distance increases
+		//r += (d_front/100);
+		// decrese reward when car is off-center
+		//r -= track_pos;
+		
+		//printf("track_pos: %f \n", track_pos);
+
 		// reward for correct turn
 		
 		if (d_right > d_left) {
@@ -1152,7 +1181,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 			else
 				r += RWD_WRONG_TURN;
 		}
-		if (d_left > d_right) {
+		if (d_right < d_left) {
 			if (agent.action.delta > 0)
 				r += RWD_CORRECT_TURN;
 			else
@@ -1167,8 +1196,8 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 				r += RWD_TURN_STRAIGHT;
 		}
 		// reward for keeping the car near the center
-		// normalize to track length
-		track_pos = track_pos/12;
+		// off centre decreses reward
+		//r -= track_pos;
 		//r -= fabs(track_pos);
 	}
 	//printf("r: %f\n", r);
@@ -1250,14 +1279,16 @@ void init_qlearn_params() {
 	n_states = MAX_STATES_LIDAR*MAX_STATES_LIDAR;
 	//n_actions = (MAX_THETA * 2) - 1;
 	n_actions = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
-	printf("n_states: %d\n",n_states);
+	printf("n_states: %d, n_actions: %d\n",n_states, n_actions);
 	ql_init(n_states, n_actions);
 	// modify specific params by calling related function
-	ql_set_learning_rate(0.5);
-	ql_set_discount_factor(1.0);
-	ql_set_expl_range(0.1, 0.01);
-	ql_set_expl_decay(0.95);
+	ql_set_learning_rate(0.2);
+	ql_set_discount_factor(0.9);
+	ql_set_expl_factor(0.4);
+	ql_set_expl_range(0.4, 0.05);
+	ql_set_expl_decay(0.9);
 }
+
 void save_Q_matrix_to_file() {
 	FILE *fp;
 	int n_states, n_actions;
@@ -1289,6 +1320,39 @@ void save_Q_matrix_to_file() {
 	
 	fclose(fp);
 	printf("Q matrix saved on file %s!\n", Q_MAT_FILE_NAME);
+}
+
+void save_Tr_matrix_to_file() {
+	FILE *fp;
+	int n_states, n_actions;
+	int i, j;
+	n_states = ql_get_nstates();
+	n_actions = ql_get_nactions();
+	float Tr_tmp[n_states][n_actions];
+	
+	for(i = 0; i < n_states; i++) {
+		for(j = 0; j < n_actions; j++) {
+			Tr_tmp[i][j] = ql_get_Tr(i, j);
+		}
+	}
+
+	fp = fopen(Tr_MAT_FILE_NAME, "w");
+	if (fp == NULL) {
+		printf("ERROR: could not open file to write T_r matrix\n");
+		exit(1);
+	}
+	// save the number of states and actions
+	fprintf(fp, "%d %d\n", n_states, n_actions);
+	// save values of Q Matrix
+	for(i = 0; i < n_states; i++) {
+		for(j = 0; j < n_actions; j++) {
+			fprintf(fp, "%.2f ", Tr_tmp[i][j]);
+		}
+		fprintf(fp, "\n");
+	}
+	
+	fclose(fp);
+	printf("T_r matrix saved on file %s!\n", Tr_MAT_FILE_NAME);
 }
 
 void read_Q_matrix_from_file() {
@@ -1339,6 +1403,54 @@ void read_Q_matrix_from_file() {
 	printf("Q Matrix restored!\n");
 }
 
+void read_Tr_matrix_from_file() {
+	FILE *fp;
+	int dim_states_f, dim_actions_f, n_states, n_actions;
+	char buf[50];
+	char tr_buff[1024];
+	int size;
+	char *ptr;
+	float val;
+	int i, j; // indexes to use for matrix
+
+	n_states = ql_get_nstates();
+	n_actions = ql_get_nactions();
+	i = 0;
+	j = 0;
+	fp = fopen(Tr_MAT_FILE_NAME, "r");
+
+	size = 50;
+	if (fp == NULL) {
+		printf("ERROR: could not open file to read T_r matrix\n");
+		exit(1);
+	}
+	// check saved Q matrix dimensions from file
+	if (fgets(buf, size, fp) != NULL) {
+		sscanf(buf, " %d %d", &dim_states_f, &dim_actions_f);
+		if (dim_states_f != n_states) {
+			printf("ERROR: STATES dimension different from current T_r matrix configuration!\n");
+			exit(1);
+		}
+		if (dim_actions_f != n_actions) {
+			printf("ERROR: ACTIONS dimension different from current T_r matrix configuration!\n");
+			exit(1);
+		}
+	}
+
+	size = 1024;
+	while (fgets(tr_buff, size, fp) != NULL) {
+		ptr = tr_buff;
+		j = 0;
+		while (val = strtof(ptr, &ptr)) {
+			ql_set_Tr_matrix(i, j, val);
+			j++;
+		}
+		i++;
+	}
+	
+	printf("T_r Matrix restored!\n");
+}
+
 float single_thread_learning() {
 	int a[MAX_AGENTS], s[MAX_AGENTS], s_new[MAX_AGENTS];
 	float max_err, err;
@@ -1358,7 +1470,9 @@ float single_thread_learning() {
 		if (agent.alive == 0)
 			continue;
 
-		agent.action.delta = action_to_steering(agent.a_id);
+		a[i] = ql_egreedy_policy(agent.state);
+		agent.action.delta = action_to_steering(a[i]);
+		//agent.action.delta = action_to_steering(agent.a_id);
 		agent.action.a = 0.0;
 		agent.car = update_car_model(agent);
 		
@@ -1368,24 +1482,27 @@ float single_thread_learning() {
 		d_r[i] = car_sensors[2].d;
 
 		s[i] = agent.state;
-		a[i] = agent.a_id;
+		//a[i] = agent.a_id;
 		s_new[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
 
 		r[i] = get_reward(agent, d_l[i], d_f[i], d_r[i]);
-
+		//printf("r: %f \n", r[i]);
 		// update max reward for debug
 		if (r[i] > max_reward)
 			max_reward = r[i];
 		// Q Learning
-		//err = ql_updateQ(s[i], a[i], r[i], s_new[i]);
-		int a_new = ql_egreedy_policy(s_new[i]);
+		err = ql_updateQ(s[i], a[i], r[i], s_new[i]);
+		// Q(lambda) Learning
+		err = ql_lambda_updateQ(s[i], a[i], r[i], s_new[i]);
 		//printf("s_new: %d, a: %d, s: %d, r: %f \n", s[i], a[i], s[i], r[i]);
 		// Sarsa algorithm
-		err = updateQ_sarsa(s[i], a[i], r[i], s_new[i], a_new);
+		//int a_new = ql_egreedy_policy(s_new[i]);
+		//err = updateQ_sarsa(s[i], a[i], r[i], s_new[i], a_new);
 
 		// update agent state
 		agent.state = s_new[i];
-		agent.a_id = a_new;
+		agent.a_id = a[i];
+		//agent.a_id = a_new;
 		agents[i] = agent;
 		// update max error
 		// needs better handling of error
@@ -1395,6 +1512,8 @@ float single_thread_learning() {
 	pthread_mutex_unlock(&mux_agent);
 	pthread_mutex_lock(&mux_cbuffer);
 	for(i = 0; i < BUF_LEN; i++) {
+		if (agents[0].alive == 0)
+			break;
 		curr_s = s_new[0]; // save to graph the action of first agent only
 		act = ql_get_Q(curr_s, i);
 		push_to_cbuf(i, act, i);

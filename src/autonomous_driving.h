@@ -11,13 +11,14 @@
 #define GRAPH_H 300
 #define GRAPH_W 500
 //-------------------------------REINFORCEMENT LEARNING-------------------------
+/*
 #define RWD_CRASH -500
 #define RWD_ALIVE 1
 #define RWD_CORRECT_TURN 5
 #define RWD_WRONG_TURN -4
 #define RWD_STRAIGHT 2
 #define RWD_TURN_STRAIGHT -4
-
+*/
 #define MAX_STATES_LIDAR 50
 #define ACTIONS_STEP 5 // 5 degree resolution
 //-------------------------------GRAPHICS---------------------------------------
@@ -35,7 +36,7 @@
 #define XCEN_SIM (SIM_X/2)
 #define YCEN_SIM (SIM_Y/2)
 #define SCALE 0.16 // 1px = 0.16m
-#define T_SCALE 4.0
+#define T_SCALE 5.0
 
 #define INIT_CAR_X 570
 #define INIT_CAR_Y 650
@@ -59,13 +60,13 @@
 #define MIN_A (-0.5*G)
 #define MAX_V 300.0
 #define MIN_V 0.0
-#define MAX_AGENTS 100
+#define MAX_AGENTS 1
 #define CRASH_DIST 3
 #define INFERENCE 1
 #define TRAINING 0
 #define TRAIN_VEL 5.0
 
-#define POOL_DIM 6
+#define POOL_DIM 10
 #define BUF_LEN ((MAX_THETA*2)/ACTIONS_STEP)+1
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
@@ -103,6 +104,7 @@
 #define GRAPHICS_DLR 25
 
 #define Q_MAT_FILE_NAME "q_matrix.txt"
+#define Tr_MAT_FILE_NAME "t_r_matrix.txt"
 /*-----------------------------------------------------------------------------*/
 /*								CUSTOM STRUCTURES							   */
 /*-----------------------------------------------------------------------------*/
@@ -230,6 +232,8 @@ float learn_to_drive();
 float single_thread_learning();
 void save_Q_matrix_to_file();
 void read_Q_matrix_from_file();
+void save_Tr_matrix_to_file();
+void read_Tr_matrix_from_file();
 void init_pool_poses();
 //-------------------------------- UTILS --------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, struct Car car);
