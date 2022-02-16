@@ -526,7 +526,7 @@ void* learning_task(void* arg) {
 			episode++;
 			
 			if((episode%100) == 0) {
-				ql_reduce_expl();
+				//ql_reduce_expl();
 				// change initial position to improve training
 				pool_index = (pool_index + 1) % POOL_DIM;
 				printf("Changing initial pose!\n");
@@ -1164,8 +1164,8 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	} else {
 		//r = ALPHA_REWARD * (vx + vy - agent.car.v*fabs(track_pos));
 		// reward for staying alive
-		return RWD_ALIVE;
-		//r += RWD_ALIVE;
+		//return RWD_ALIVE;
+		r += RWD_ALIVE;
 		// increase reward when front distance increases
 		//r += (d_front/100);
 		// decrese reward when car is off-center
@@ -1177,13 +1177,13 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		
 		if (d_right > d_left) {
 			if (agent.action.delta < 0)
-				r += RWD_CORRECT_TURN;
+				r += RWD_CORRECT_TURN * fabs(agent.action.delta);
 			else
 				r += RWD_WRONG_TURN;
 		}
 		if (d_right < d_left) {
 			if (agent.action.delta > 0)
-				r += RWD_CORRECT_TURN;
+				r += RWD_CORRECT_TURN * fabs(agent.action.delta);
 			else
 				r += RWD_WRONG_TURN;
 		}
@@ -1191,9 +1191,9 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		// reward for no turn on straight
 		if ((d_front > d_left) && (d_front > d_right)) {
 			if (fabs(agent.action.delta) < deg_to_rad(5))
-				r += RWD_STRAIGHT;
+				r += RWD_STRAIGHT/(1 - fabs(agent.action.delta));
 			else
-				r += RWD_TURN_STRAIGHT;
+				r += RWD_TURN_STRAIGHT/(1 - fabs(agent.action.delta));
 		}
 		// reward for keeping the car near the center
 		// off centre decreses reward
@@ -1282,9 +1282,9 @@ void init_qlearn_params() {
 	printf("n_states: %d, n_actions: %d\n",n_states, n_actions);
 	ql_init(n_states, n_actions);
 	// modify specific params by calling related function
-	ql_set_learning_rate(0.2);
+	ql_set_learning_rate(0.9);
 	ql_set_discount_factor(0.9);
-	ql_set_expl_factor(0.4);
+	ql_set_expl_factor(0.1);
 	ql_set_expl_range(0.4, 0.05);
 	ql_set_expl_decay(0.9);
 }
@@ -1493,7 +1493,7 @@ float single_thread_learning() {
 		// Q Learning
 		err = ql_updateQ(s[i], a[i], r[i], s_new[i]);
 		// Q(lambda) Learning
-		err = ql_lambda_updateQ(s[i], a[i], r[i], s_new[i]);
+		//err = ql_lambda_updateQ(s[i], a[i], r[i], s_new[i]);
 		//printf("s_new: %d, a: %d, s: %d, r: %f \n", s[i], a[i], s[i], r[i]);
 		// Sarsa algorithm
 		//int a_new = ql_egreedy_policy(s_new[i]);

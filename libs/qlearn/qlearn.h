@@ -13,11 +13,11 @@
 #define EPSILON0 0.2
 #define ALPHA_REWARD 1.0
 
-#define RWD_CRASH -100
-#define RWD_ALIVE -1
-#define RWD_CORRECT_TURN 1
+#define RWD_CRASH -200
+#define RWD_ALIVE 0.5
+#define RWD_CORRECT_TURN 2
 #define RWD_WRONG_TURN -4
-#define RWD_STRAIGHT 1
+#define RWD_STRAIGHT 2
 #define RWD_TURN_STRAIGHT -4
 
 static int n_states;
