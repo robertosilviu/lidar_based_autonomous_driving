@@ -216,25 +216,27 @@ int ql_egreedy_policy(int s) {
 float ql_updateQ(int s, int a, float r, int snew) {
 	float q_target;	// target Q value
 	float td_err;	// TD error
-	float old_q;
+	//float old_q;
 	//q_target = r + gam*ql_maxQ(snew);
 	//td_err = q_target - Q[s][a];
 	//Q[s][a] = Q[s][a] + alpha*td_err;
 	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
+
 	
 	if (r == RWD_CRASH)
 		q_target = r + gam*ql_maxQ(s);
 	else
 		q_target = r + gam*ql_maxQ(snew);
+	
 
-	//PRINTLINE;
+	//q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q[s][a];
-	old_q = Q[s][a];
+	//old_q = Q[s][a];
 	Q[s][a] = (1 - alpha) * Q[s][a] + alpha * (q_target);
 	//printf("Q: %f, td_err: %f \n", Q[s][a], td_err);
 
 
-	return fabs(Q[s][a] - old_q);
+	return fabs(td_err);
 }
 
 float ql_lambda_updateQ(int s, int a, float r, int snew) {
@@ -259,7 +261,8 @@ float ql_lambda_updateQ(int s, int a, float r, int snew) {
 	}
 
 	Q[s][a] = Q[s][a] + alpha*e_dot;
-	T_r[s][a] = T_r[s][a] + 1;
+	//T_r[s][a] = T_r[s][a] + 1;
+	T_r[s][a] = 1;
 
 	return fabs(Q[s][a] - old_q);
 }

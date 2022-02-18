@@ -3,8 +3,8 @@
 
 #define PRINTLINE printf("LINE: %d\n", __LINE__)
 
-#define MAX_STATES 2510
-#define MAX_ACTIONS 15
+#define MAX_STATES 400
+#define MAX_ACTIONS 20
 #define ALPHA0	1.0						// default learning rate
 #define EPSINI 0.7						// initial exploration factor
 #define EPSFIN 0.01						// final exploration factor
@@ -13,12 +13,14 @@
 #define EPSILON0 0.2
 #define ALPHA_REWARD 1.0
 
-#define RWD_CRASH -200
-#define RWD_ALIVE 0.5
+#define RWD_CRASH -100
+#define RWD_ALIVE -1
 #define RWD_CORRECT_TURN 2
 #define RWD_WRONG_TURN -4
 #define RWD_STRAIGHT 2
 #define RWD_TURN_STRAIGHT -4
+#define RWD_OFF_CENTRE -1
+#define RWD_DISTANCE 1
 
 static int n_states;
 static int n_actions;
@@ -31,7 +33,7 @@ static float norm_eps = 1.0;			// normal exploration probability
 static float ini_eps;					// initial exploration probability
 static float fin_eps;					// final exploration probability
 static float epsilon;					// actual exploration probability
-static float lambda = 0.9;
+static float lambda = 0.3;
 //----------------------------
 //	QL matrice
 //----------------------------

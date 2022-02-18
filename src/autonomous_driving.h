@@ -19,7 +19,7 @@
 #define RWD_STRAIGHT 2
 #define RWD_TURN_STRAIGHT -4
 */
-#define MAX_STATES_LIDAR 50
+#define MAX_STATES_LIDAR 10
 #define ACTIONS_STEP 5 // 5 degree resolution
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
@@ -36,15 +36,15 @@
 #define XCEN_SIM (SIM_X/2)
 #define YCEN_SIM (SIM_Y/2)
 #define SCALE 0.16 // 1px = 0.16m
-#define T_SCALE 5.0
+#define T_SCALE 10.0
 
 #define INIT_CAR_X 570
 #define INIT_CAR_Y 650
 
 #define BTM_X INIT_CAR_X // (x,y) coordinates with origin on bottomo left
 #define BTM_Y SIM_Y-INIT_CAR_Y
-#define MAX_THETA 30
-#define MIN_THETA -30
+#define MAX_THETA 40
+#define MIN_THETA -40
 #define INIT_THETA 90.0
 #define LF 3.0					// car length to front from centre of gravity
 #define LR 2.0					// car length to back from centre of gravity
@@ -66,7 +66,7 @@
 #define TRAINING 0
 #define TRAIN_VEL 5.0
 
-#define POOL_DIM 10
+#define POOL_DIM 13
 #define BUF_LEN ((MAX_THETA*2)/ACTIONS_STEP)+1
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance

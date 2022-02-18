@@ -542,6 +542,9 @@ void* learning_task(void* arg) {
 			conv_delta = 0;
 			episode++;
 			
+			if(((episode%200) == 0) && (episode > 100))
+				ql_reduce_expl();
+
 			if((episode%100) == 0) {
 				//ql_reduce_expl();
 				// change initial position to improve training
@@ -551,6 +554,7 @@ void* learning_task(void* arg) {
 
 			for(j = 0; j < MAX_AGENTS; j++) {
 					agents[j].alive = 1;
+					agents[j].distance = 0.0;
 					new_car.v = TRAIN_VEL;
 					new_car.x = pose_pool[pool_index][0];
 					new_car.y = pose_pool[pool_index][1];
@@ -772,9 +776,9 @@ void init_pool_poses() {
 	pose_pool[1][1] = 0.0;
 	pose_pool[1][2] = deg_to_rad(90.0);
 
-	pose_pool[2][0] = -75.0;
-	pose_pool[2][1] = 82.0;
-	pose_pool[2][2] = deg_to_rad(15.0);
+	pose_pool[2][0] = -73.0;
+	pose_pool[2][1] = 52.0;
+	pose_pool[2][2] = deg_to_rad(90.0);
 
 	pose_pool[3][0] = -60.0;
 	pose_pool[3][1] = 70.0;
@@ -796,13 +800,26 @@ void init_pool_poses() {
 	pose_pool[7][1] = 85.0;
 	pose_pool[7][2] = deg_to_rad(0.0);
 
-	pose_pool[8][0] = -5.0;
+	pose_pool[8][0] = -15.0;
 	pose_pool[8][1] = 45.0;
 	pose_pool[8][2] = deg_to_rad(0.0);
 
 	pose_pool[9][0] = 19.0;
 	pose_pool[9][1] = 75.0;
 	pose_pool[9][2] = deg_to_rad(270.0);
+
+	pose_pool[10][0] = 10.0;
+	pose_pool[10][1] = 60.0;
+	pose_pool[10][2] = deg_to_rad(180.0);
+
+	pose_pool[11][0] = -58.0;
+	pose_pool[11][1] = 40.0;
+	pose_pool[11][2] = deg_to_rad(0.0);
+
+	pose_pool[12][0] = -75.0;
+	pose_pool[12][1] = 82.0;
+	pose_pool[12][2] = deg_to_rad(15.0);
+
 
 }
 
@@ -1034,7 +1051,7 @@ struct Car update_car_model(struct Agent agent) {
 	// normalize theta to 0 - 360
 	norm_theta = atan2(-sin(norm_theta), -cos(norm_theta)) + M_PI;
 	//new_state.theta = norm_theta + (omega * dt);
-	new_state.theta = norm_theta;
+	new_state.theta = norm_theta;	
 	//printf("y: %f, theta: %f\n", new_state.y, rad_to_deg(norm_theta));
 	return new_state;
 	//}
@@ -1085,9 +1102,9 @@ void write_debug() {
 	textout_ex(debug_bmp, font, debug, x, 70, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"alive: %d", agent.alive);
+	sprintf(debug,"max steer: %f rad", deg_to_rad(MAX_THETA));
 	textout_ex(debug_bmp, font, debug, x, 80, white, -1);
-
+	
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"gamma: %f", ql_get_discount_factor());
 	textout_ex(debug_bmp, font, debug, x, 90, white, -1);
@@ -1097,7 +1114,7 @@ void write_debug() {
 	textout_ex(debug_bmp, font, debug, x, 100, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"max steer: %f rad", deg_to_rad(MAX_THETA));
+	sprintf(debug,"alive: %d", agent.alive);
 	textout_ex(debug_bmp, font, debug, x, 110, white, -1);
 
 	memset(debug, 0, sizeof debug);
@@ -1109,7 +1126,7 @@ void write_debug() {
 	textout_ex(debug_bmp, font, debug, x, 130, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"max reward: %f", max_reward);
+	sprintf(debug,"distance: %f", agent.distance);
 	textout_ex(debug_bmp, font, debug, x, 140, white, -1);
 
 	memset(debug, 0, sizeof debug);
@@ -1170,8 +1187,10 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	float x, y, alpha;
 	//float vx, vy, ca, sa;
 	int d_l, d_r;
+	float dist;
 
 	track_pos = 0.0;
+	dist = 0.0;
 	
 	// compute left distance perpendicular to car's (x,y) 
 	alpha = deg_to_rad(agent.car.theta + 90.0);
@@ -1212,11 +1231,13 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		//r += (d_front/100);
 		// decrese reward when car is off-center
 		//r -= track_pos;
-		
+		//dist = (float)agent.distance/20.0;
+		dist = floor(agent.distance/20.0);
+		r += dist * RWD_DISTANCE;
 		//printf("track_pos: %f \n", track_pos);
-
+		//printf("r: %f, dist: %f\n", r, dist);
+		return r;
 		// reward for correct turn
-		
 		if (d_right > d_left) {
 			if (agent.action.delta < 0)
 				r += RWD_CORRECT_TURN * fabs(agent.action.delta);
@@ -1240,7 +1261,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		// reward for keeping the car near the center
 		// off centre decreses reward
 		//r -= track_pos;
-		//r -= fabs(track_pos);
+		//r += RWD_OFF_CENTRE * fabs(track_pos);
 	}
 	//printf("r: %f\n", r);
 	//printf("r: %f, vx: %f, vy: %f, track_pos: %f\n", r, vx, vy, agent.car.v*fabs(track_pos));
@@ -1329,7 +1350,7 @@ void init_qlearn_params() {
 	ql_set_learning_rate(0.2);
 	ql_set_discount_factor(0.9);
 	ql_set_expl_factor(0.1);
-	ql_set_expl_range(0.8, 0.05);
+	ql_set_expl_range(0.1, 0.01);
 	ql_set_expl_decay(0.9);
 }
 
@@ -1525,6 +1546,8 @@ float single_thread_learning() {
 		//agent.action.delta = action_to_steering(agent.a_id);
 		agent.action.a = 0.0;
 		agent.car = update_car_model(agent);
+		// find distance of agent on track
+		agent.distance = agent.distance + sqrt(pow((agents[i].car.x - agent.car.x), 2) + pow((agents->car.y - agent.car.y), 2));
 		
 		get_updated_lidars_distance(agent.car, car_sensors);
 		d_l[i] = car_sensors[0].d;
