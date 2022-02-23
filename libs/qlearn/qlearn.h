@@ -20,7 +20,7 @@
 #define RWD_STRAIGHT 2
 #define RWD_TURN_STRAIGHT -4
 #define RWD_OFF_CENTRE -1
-#define RWD_DISTANCE 1
+#define RWD_DISTANCE 0.5
 
 static int n_states;
 static int n_actions;

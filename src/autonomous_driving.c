@@ -522,6 +522,12 @@ void* learning_task(void* arg) {
 	pthread_mutex_unlock(&mux_sensors);
 	do {
 		crash_check();
+		// interrupt training after driving on whole track for 2 times
+		for(j = 0; j < MAX_AGENTS; j++) {
+			if (agents[j].distance > 1200)
+				agents[j].alive = 0;
+		}
+
 		alive_flag = 0;
 		// need to update agent when crash occured
 		//for(i = 0; i < MAX_AGENTS; i++) {
@@ -542,11 +548,11 @@ void* learning_task(void* arg) {
 			conv_delta = 0;
 			episode++;
 			
-			if(((episode%200) == 0) && (episode > 100))
-				ql_reduce_expl();
+			//if(((episode%200) == 0) && (episode > 100))
+			//	ql_reduce_expl();
 
 			if((episode%100) == 0) {
-				//ql_reduce_expl();
+				ql_reduce_expl();
 				// change initial position to improve training
 				pool_index = (pool_index + 1) % POOL_DIM;
 				printf("Changing initial pose!\n");
@@ -1351,7 +1357,7 @@ void init_qlearn_params() {
 	ql_set_discount_factor(0.9);
 	ql_set_expl_factor(0.1);
 	ql_set_expl_range(0.1, 0.01);
-	ql_set_expl_decay(0.9);
+	ql_set_expl_decay(0.95);
 }
 
 // save Q Matrix to file
