@@ -19,6 +19,8 @@
 #define RWD_STRAIGHT 2
 #define RWD_TURN_STRAIGHT -4
 */
+#define LIDAR_ANGLE_POS 45.0
+#define LIDAR_ANGLE_NEG -45.0
 #define MAX_STATES_LIDAR 10
 #define ACTIONS_STEP 5 // 5 degree resolution
 //-------------------------------GRAPHICS---------------------------------------

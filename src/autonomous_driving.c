@@ -889,7 +889,8 @@ void refresh_sensors() {
 	for(i = 0; i < MAX_AGENTS; i++) {
 		car = agents[i].car;
 		// left lidar
-		lidar.alpha = car.theta + deg_to_rad(45.0);
+		//lidar.alpha = car.theta + deg_to_rad(45.0);
+		lidar.alpha = car.theta + deg_to_rad(LIDAR_ANGLE_POS);
 		x_p = car.x + L*cos(car.theta);	// global frame in m from bottom left
 		y_p = car.y + L*sin(car.theta);
 		//printf("x_p: %f, y_p: %f\n", x_p, y_p);
@@ -910,7 +911,8 @@ void refresh_sensors() {
 						lidar.alpha);
 		tmp_sensors[i][1] = lidar;
 		// right
-		lidar.alpha = car.theta + deg_to_rad(-45.0);
+		//lidar.alpha = car.theta + deg_to_rad(-45.0);
+		lidar.alpha = car.theta + deg_to_rad(LIDAR_ANGLE_NEG);
 		lidar.x = BTM_X + (x_p/SCALE);
 		lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
 		lidar.d = read_sensor(
@@ -943,7 +945,8 @@ void get_updated_lidars_distance(struct Car car, struct Lidar car_sensors[]) {
 	}
 
 	// left lidar
-	lidar.alpha = car.theta + deg_to_rad(45.0);
+	//lidar.alpha = car.theta + deg_to_rad(45.0);
+	lidar.alpha = car.theta + deg_to_rad(LIDAR_ANGLE_POS);
 	x_p = car.x + L*cos(car.theta);	// global frame in m from bottom left
 	y_p = car.y + L*sin(car.theta);
 	//printf("x_p: %f, y_p: %f\n", x_p, y_p);
@@ -964,7 +967,8 @@ void get_updated_lidars_distance(struct Car car, struct Lidar car_sensors[]) {
 					lidar.alpha);
 	car_sensors[1] = lidar;
 	// right
-	lidar.alpha = car.theta + deg_to_rad(-45.0);
+	//lidar.alpha = car.theta + deg_to_rad(-45.0);
+	lidar.alpha = car.theta + deg_to_rad(LIDAR_ANGLE_NEG);
 	lidar.x = BTM_X + (x_p/SCALE);
 	lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
 	lidar.d = read_sensor(
