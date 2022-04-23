@@ -44,8 +44,9 @@ $(TLIB).o: $(TLIB_PATH).c
 	$(CC) $(CFLAGS) -c $(TLIB_PATH).c
 
 QLEARN_PATH = libs/qlearn/$(QLEARN_LIB)
-$(QLEARN_LIB).o: $(QLEARN_PATH).c
-	$(CC) $(CFLAGS) -c $(QLEARN_PATH).c
+KOHONEN_PATH = libs/qlearn/kohonen
+$(QLEARN_LIB).o: $(QLEARN_PATH).c $(KOHONEN_PATH).c
+	$(CC) $(CFLAGS) -c $(QLEARN_PATH).c $(KOHONEN_PATH).c
 
 clean:
 	rm -rf *.o $(MAIN)

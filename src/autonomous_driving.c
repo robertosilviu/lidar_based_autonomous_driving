@@ -4,6 +4,7 @@
 #include "../libs/ptask/ptask.h"
 #include "../libs/tlib/tlib.h"
 #include "../libs/qlearn/qlearn.h"
+#include "../libs/qlearn/kohonen.h"
 #include "autonomous_driving.h"
 
 
@@ -77,6 +78,7 @@ void init() {
 	init_pool_poses();
 	init_agent();
 	init_qlearn_params();
+	init_kohonen_nn();
 	init_scene();
 	refresh_sensors();
 	update_scene();
@@ -1608,4 +1610,32 @@ float single_thread_learning() {
 	// error handling is wrong !!  needs to be changed
 	return max_err;
 }
+// -------------- KOHONEN ------------------
+void init_kohonen_nn() {
+	int  topology = LINE;
+	int n_input = 2;
+	int n_output = 36;
+	int radius_ini = (int)n_output/2;
+	int radius_fin = 1;
 
+	// initialize kohonen neural network
+	set_learn_decay(0.9);
+	set_radius_decay(0.9);
+	set_learning_range(1.0, 0.1);
+	set_radius_range(radius_ini, radius_fin);
+	set_weight_range(0.01, 1.0); // to check if correct
+	
+	init_net(n_input, n_output, topology);
+}
+
+void train_kohonen_live(float d_l, float d_r, float d_f);void train_kohonen_live(float d_l, float d_r, float d_f) {
+	float x1, x2;
+	float v[2];
+
+	x1 = ( ((d_l - d_r)/SMAX) + 1) * 0.5;
+	x2 = d_f/SMAX;
+	v[0] = x1;
+	v[1] = x2;
+
+	learn_example(v);
+}

@@ -49,7 +49,7 @@ void compute_output() {
 }
 
 int select_winner() {
-	int j, winner;
+	int i, winner;
 	float min, d;
 
 	min = distance(ki, kw[0]);
