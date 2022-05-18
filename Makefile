@@ -20,7 +20,8 @@ CFLAGS = -Wall -lpthread -lrt
 PTASK_LIB = ptask
 TLIB = tlib
 QLEARN_LIB = qlearn
-OBJS = $(MAIN).o $(PTASK_LIB).o $(TLIB).o $(QLEARN_LIB).o
+KOHONEN_LIB = kohonen
+OBJS = $(MAIN).o $(PTASK_LIB).o $(TLIB).o $(QLEARN_LIB).o $(KOHONEN_LIB).o
 #-----------------------------------------------------------------------
 # LIBS are the external libraried to be used
 #-----------------------------------------------------------------------
@@ -44,7 +45,7 @@ $(TLIB).o: $(TLIB_PATH).c
 	$(CC) $(CFLAGS) -c $(TLIB_PATH).c
 
 QLEARN_PATH = libs/qlearn/$(QLEARN_LIB)
-KOHONEN_PATH = libs/qlearn/kohonen
+KOHONEN_PATH = libs/qlearn/$(KOHONEN_LIB)
 $(QLEARN_LIB).o: $(QLEARN_PATH).c $(KOHONEN_PATH).c
 	$(CC) $(CFLAGS) -c $(QLEARN_PATH).c $(KOHONEN_PATH).c
 
