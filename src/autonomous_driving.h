@@ -21,7 +21,7 @@
 */
 #define LIDAR_ANGLE_POS 45.0
 #define LIDAR_ANGLE_NEG -45.0
-#define MAX_STATES_LIDAR 10
+#define MAX_STATES_LIDAR 7
 #define ACTIONS_STEP 5 // 5 degree resolution
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
@@ -107,6 +107,7 @@
 
 #define Q_MAT_FILE_NAME "q_matrix.txt"
 #define Tr_MAT_FILE_NAME "t_r_matrix.txt"
+#define KW_MAT_FILE_NAME "kw_matrix.txt"
 /*-----------------------------------------------------------------------------*/
 /*								CUSTOM STRUCTURES							   */
 /*-----------------------------------------------------------------------------*/
@@ -185,6 +186,8 @@ float init_x_offset = 0;
 float init_y_offset = 0;
 float pose_pool[POOL_DIM][3]; // different initial poses on track to help agent learn
 int pool_index = 0;
+// temporary
+int restore_Q = 0;
 //---------------------------------------------------------------------------
 // GLOBAL SEMAPHORES
 //---------------------------------------------------------------------------
@@ -239,6 +242,8 @@ void read_Tr_matrix_from_file();
 void init_pool_poses();
 void init_kohonen_nn();
 void train_kohonen_live(float d_l, float d_r, float d_f);
+void read_kw_from_file();
+void save_kw_to_file();
 //-------------------------------- UTILS --------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, struct Car car);
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);

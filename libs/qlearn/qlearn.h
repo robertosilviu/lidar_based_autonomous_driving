@@ -24,6 +24,7 @@
 
 static int n_states;
 static int n_actions;
+static int n_actions_vel;
 //static int goal_state;
 
 static float alpha;						// learning rate
@@ -35,18 +36,24 @@ static float fin_eps;					// final exploration probability
 static float epsilon;					// actual exploration probability
 static float lambda = 0.3;
 //----------------------------
-//	QL matrice
+//	QL matrixes
 //----------------------------
+
+// Q matrix related to steering
 static float Q[MAX_STATES][MAX_ACTIONS];
+
+// Q matrix related to velocity
+static float Q_vel[MAX_STATES][MAX_ACTIONS];
 static float T_r[MAX_STATES][MAX_ACTIONS];
 
-void ql_init(int ns, int na);
+void ql_init(int ns, int na, int na_vel);
 void ql_set_learning_rate(float lr);
 void ql_set_discount_factor(float df);
 void ql_set_expl_range(float ini_e, float fin_e);
 void ql_set_expl_decay(float d);
 void ql_set_expl_factor(float e);
 void ql_set_Q_matrix(int s, int a, float val);
+void ql_set_Q_vel_matrix(int s, int a, float val);
 void ql_set_Tr_matrix(int s, int a, float val);
 
 float ql_get_learning_rate();
@@ -54,17 +61,23 @@ float ql_get_discount_factor();
 float ql_get_expl_decay();
 float ql_get_epsilon();
 float ql_get_Q(int s, int a);
+float ql_get_Q_vel(int s, int a);
 float ql_get_Tr(int s, int a);
 int ql_get_nstates();
 int ql_get_nactions();
+int ql_get_nactions_vel();
 
 void ql_reduce_expl();
 float ql_maxQ(int s);
-int ql_best_action(int s);
-int ql_egreedy_policy(int s);
+float ql_maxQ_vel(int s);
+int ql_best_action_steer(int s);
+int ql_best_action_vel(int s);
+int ql_egreedy_policy_steer(int s);
+int ql_egreedy_policy_vel(int s);
 float ql_updateQ(int s, int a, float r, int snew);
-float ql_lambda_updateQ(int s, int a, float r, int snew);
+float ql_updateQ_vel(int s, int a, float r, int snew);
 
+float ql_lambda_updateQ(int s, int a, float r, int snew);
 float updateQ_sarsa(int s, int a, float r, int snew, int anew);
 
 float frand(float xmin, float xmax);

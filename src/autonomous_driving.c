@@ -74,11 +74,13 @@ void init() {
 	h = SIM_Y - DMISS_H;
 	debug_bmp = create_bitmap(w, h);
 	//rect(screen,0, WIN_Y-1, SIM_X, WIN_Y-SIM_Y, white); // track area
-	// track window
 	init_pool_poses();
+	// Q learning related
 	init_agent();
 	init_qlearn_params();
+	// Kohonen network related
 	init_kohonen_nn();
+	// track window
 	init_scene();
 	refresh_sensors();
 	update_scene();
@@ -587,6 +589,13 @@ void* learning_task(void* arg) {
 	//}
 		// sensors task
 		refresh_sensors();
+
+		// train Kohonen network
+		d_l = sensors[0][0].d;
+		d_f = sensors[0][1].d;
+		d_r = sensors[0][2].d;
+		train_kohonen_live(d_l, d_r, d_f);
+
 		// display task
 		update_scene();
 		clear_to_color(debug_bmp, 0);
@@ -601,9 +610,11 @@ void* learning_task(void* arg) {
 		deadline_miss(LEARNING_ID);
 		wait_for_activation(i);
 	} while (!end);
-	// save learning Q matrix on file for further use
+	// save Q learning matrix on file for further use
 	save_Q_matrix_to_file();
 	save_Tr_matrix_to_file();
+	// save Kohonen weights matrix on file for further use
+	save_kw_to_file();
 
 	return NULL;
 }
@@ -698,8 +709,11 @@ char interpreter() {
 			case KEY_L:
 				printf("Loading Q matrix from file %s\n", Q_MAT_FILE_NAME);
 				pthread_mutex_lock(&mux_q_matrix);
+				// Q Learning
 				read_Q_matrix_from_file();
 				read_Tr_matrix_from_file();
+				// Kohonen network
+				read_kw_from_file();
 				pthread_mutex_unlock(&mux_q_matrix);
 				break;
 			case KEY_D:
@@ -1470,6 +1484,7 @@ void read_Q_matrix_from_file() {
 		}
 	}
 
+	printf(" previous Q val: %f \n", ql_get_Q(27,0));
 	size = 1024;
 	while (fgets(q_buff, size, fp) != NULL) {
 		ptr = q_buff;
@@ -1480,7 +1495,7 @@ void read_Q_matrix_from_file() {
 		}
 		i++;
 	}
-	
+	printf(" new Q val: %f \n", ql_get_Q(27,0));
 	printf("Q Matrix restored!\n");
 }
 
@@ -1552,7 +1567,7 @@ float single_thread_learning() {
 		if (agent.alive == 0)
 			continue;
 
-		a[i] = ql_egreedy_policy(agent.state);
+		a[i] = ql_egreedy_policy_steer(agent.state);
 		agent.action.delta = action_to_steering(a[i]);
 		// Sarsa
 		//agent.action.delta = action_to_steering(agent.a_id);
@@ -1621,14 +1636,15 @@ void init_kohonen_nn() {
 	// initialize kohonen neural network
 	set_learn_decay(0.9);
 	set_radius_decay(0.9);
-	set_learning_range(1.0, 0.1);
+	set_learning_range(0.1, 1.0);
 	set_radius_range(radius_ini, radius_fin);
 	set_weight_range(0.01, 1.0); // to check if correct
-	
+
 	init_net(n_input, n_output, topology);
+
 }
 
-void train_kohonen_live(float d_l, float d_r, float d_f);void train_kohonen_live(float d_l, float d_r, float d_f) {
+void train_kohonen_live(float d_l, float d_r, float d_f) {
 	float x1, x2;
 	float v[2];
 
@@ -1638,4 +1654,85 @@ void train_kohonen_live(float d_l, float d_r, float d_f);void train_kohonen_live
 	v[1] = x2;
 
 	learn_example(v);
+}
+
+void read_kw_from_file() {
+	FILE *fp;
+	int dim_inputs_f, dim_units_f, n_inputs, n_units;
+	char buf[50];
+	char kw_buff[1024];
+	int size;
+	char *ptr;
+	float val;
+	int i, j; // indexes to use for matrix
+
+	n_inputs = get_input_dim();
+	n_units = get_output_dim();
+	i = 0;
+	j = 0;
+	fp = fopen(KW_MAT_FILE_NAME, "r");
+
+	size = 50;
+	if (fp == NULL) {
+		printf("ERROR: could not open file to read kw matrix\n");
+		exit(1);
+	}
+	// check saved kw matrix dimensions from file
+	if (fgets(buf, size, fp) != NULL) {
+		sscanf(buf, " %d %d", &dim_inputs_f, &dim_units_f);
+		if (dim_inputs_f != n_inputs) {
+			printf("ERROR: INPUTS dimension different from current kw matrix configuration!\n");
+			exit(1);
+		}
+		if (dim_units_f != n_units) {
+			printf("ERROR: OUTPUT dimension different from current kw matrix configuration!\n");
+			exit(1);
+		}
+	}
+
+	size = 1024;
+	while (fgets(kw_buff, size, fp) != NULL) {
+		ptr = kw_buff;
+		j = 0;
+		while (val = strtof(ptr, &ptr)) {
+			set_kw_matrix(i, j, val);
+			j++;
+		}
+		i++;
+	}
+	
+	printf("kw matrix restored!\n");
+}
+
+void save_kw_to_file() {
+	FILE *fp;
+	int n_inputs, n_units;
+	int i, j;
+	n_inputs = get_input_dim();
+	n_units = get_output_dim();
+	float kw_tmp[n_units][n_inputs];
+	
+	for(i = 0; i < n_units; i++) {
+		for(j = 0; j < n_inputs; j++) {
+			kw_tmp[i][j] = get_kw_val(i, j);
+		}
+	}
+
+	fp = fopen(KW_MAT_FILE_NAME, "w");
+	if (fp == NULL) {
+		printf("ERROR: could not open file to write kw matrix\n");
+		exit(1);
+	}
+	// save the number of states and actions
+	fprintf(fp, "%d %d\n", n_inputs, n_units);
+	// save values of Q Matrix
+	for(i = 0; i < n_units; i++) {
+		for(j = 0; j < n_inputs; j++) {
+			fprintf(fp, "%.2f ", kw_tmp[i][j]);
+		}
+		fprintf(fp, "\n");
+	}
+	
+	fclose(fp);
+	printf("kw matrix saved on file %s!\n", KW_MAT_FILE_NAME);
 }
