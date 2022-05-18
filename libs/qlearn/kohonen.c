@@ -27,7 +27,7 @@ void init_net(int ni, int no, int topo) {
 
 	for (j=0; j < k_units; j++) {
 		for (i=0; i < k_inputs; i++)
-			kw[j][i] = frand(w_min, w_max);
+			kw[j][i] = k_frand(w_min, w_max);
 	}
 }
 
@@ -57,7 +57,7 @@ int select_winner() {
 
 	for (i=1; i < k_units; i++) {
 		d = distance(ki, kw[i]);
-		if (d<= min) {
+		if (d <= min) {
 			min = d;
 			winner = i;
 		}
@@ -210,7 +210,7 @@ void save_ts_to_file() {
 }
 
 // auxiliary functions
-float frand(int xmin, int xmax) {
+float k_frand(int xmin, int xmax) {
 	float range = 0.0;
 
 	range = (xmax - xmin);
@@ -255,6 +255,10 @@ void set_ts_matrix(int i, int j, float val) {
 	ts[i][j] = val;
 }
 
+void set_kw_matrix(int i, int j, float val) {
+	kw[i][j] = val;
+}
+
 float get_radius() {
 	return k_radius;
 }
@@ -269,6 +273,10 @@ float *get_example(int k) {
 
 float get_ts_val(int i, int j) {
 	return ts[i][j];
+}
+
+float get_kw_val(int i, int j) {
+	return kw[i][j];
 }
 
 float get_input(int i) {
