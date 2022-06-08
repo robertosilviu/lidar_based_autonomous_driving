@@ -190,8 +190,7 @@ void load_ts_from_file() {
 	while (fgets(tr_buff, size, fp) != NULL) {
 		ptr = tr_buff;
 		j = 0;
-		val = strtof(ptr, &ptr);
-		while (val) {
+		while ((val = strtof(ptr, &ptr))) {
 			set_ts_matrix(i, j, val);
 			j++;
 		}
