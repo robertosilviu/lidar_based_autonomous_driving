@@ -1,8 +1,32 @@
+#include <time.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "kohonen.h"
+
+// structures
+static float ts[EXE_MAX][INP_MAX]; // training examples
+static float kw[OUT_MAX][INP_MAX]; // output weights
+static float ki[INP_MAX]; // input vector
+static float ko[OUT_MAX]; // output vector
+
+static int k_inputs;		// number of input units
+static int k_units;		// number of output units
+static int topology;		// output map topology
+static int nex;			// number of examples
+
+static float k_radius;		// neighborhood radius
+static float k_r_ini, k_r_fin; // initial & final radius
+static float k_r_norm;		// normalized radius in [0;1]
+
+static float k_alpha;		// learning rate
+static float k_a_ini, k_a_fin;	//initial & final learning rate
+static float k_a_norm;		// normalized learning rate in [0;1]
+
+static float learn_decay;	// learning rate decay
+static float radius_decay;	// radius decay
+static float w_min, w_max;	// initial weight range
 
 // neural net functions
 void init_net(int ni, int no, int topo) {
@@ -166,7 +190,8 @@ void load_ts_from_file() {
 	while (fgets(tr_buff, size, fp) != NULL) {
 		ptr = tr_buff;
 		j = 0;
-		while (val = strtof(ptr, &ptr)) {
+		val = strtof(ptr, &ptr);
+		while (val) {
 			set_ts_matrix(i, j, val);
 			j++;
 		}
