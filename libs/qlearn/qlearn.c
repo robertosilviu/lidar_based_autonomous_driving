@@ -4,6 +4,30 @@
 
 #include "qlearn.h"
 
+static int n_states;
+static int n_actions;
+static int n_actions_vel;
+//static int goal_state;
+
+static float alpha;						// learning rate
+static float gam;						// discount factor
+static float decay;						// decay rate for epsilon
+static float norm_eps = 1.0;			// normal exploration probability
+static float ini_eps;					// initial exploration probability
+static float fin_eps;					// final exploration probability
+static float epsilon;					// actual exploration probability
+static float lambda = 0.3;
+//----------------------------
+//	QL matrixes
+//----------------------------
+
+// Q matrix related to steering
+static float Q[MAX_STATES][MAX_ACTIONS];
+
+// Q matrix related to velocity
+static float Q_vel[MAX_STATES][MAX_ACTIONS];
+static float T_r[MAX_STATES][MAX_ACTIONS];
+
 float frand(float xmin, float xmax) {
 	float range;
 
@@ -356,7 +380,7 @@ float ql_updateQ_vel(int s, int a, float r, int snew) {
 	if (r == RWD_CRASH)
 		q_target = r + gam*ql_maxQ_vel(s);
 	else
-		q_target = r + gam*ql_maxQ_vvel(snew);
+		q_target = r + gam*ql_maxQ_vel(snew);
 	
 
 	//q_target = r + gam*ql_maxQ(snew);
@@ -399,7 +423,7 @@ float ql_lambda_updateQ(int s, int a, float r, int snew) {
 
 
 float updateQ_sarsa(int s, int a, float r, int snew, int anew) {
-	float td_err;
+	//float td_err;
 	float old_q;
 	// get action from new state based on e_greedy policy
 	//a_new = ql_egreedy_policy(snew);
