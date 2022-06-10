@@ -21,6 +21,12 @@
 #define RWD_TURN_STRAIGHT -4
 #define RWD_OFF_CENTRE -1
 #define RWD_DISTANCE 0.5
+#define RWD_BAD_ACC -20
+
+struct Actions_ID {
+	int steer_act_id;
+	int vel_act_id;
+};
 
 void ql_init(int ns, int na, int na_vel);
 void ql_set_learning_rate(float lr);
@@ -44,13 +50,20 @@ int ql_get_nactions();
 int ql_get_nactions_vel();
 
 void ql_reduce_expl();
-float ql_maxQ(int s);
+float ql_maxQ(int s, int flag);
+//float ql_maxQ(int s);
 float ql_maxQ_vel(int s);
+
+struct Actions_ID ql_best_action(int s);
 int ql_best_action_steer(int s);
 int ql_best_action_vel(int s);
+
+struct Actions_ID ql_egreedy_policy(int s);
 int ql_egreedy_policy_steer(int s);
 int ql_egreedy_policy_vel(int s);
-float ql_updateQ(int s, int a, float r, int snew);
+
+float ql_updateQ(int s, struct Actions_ID a, float r, int snew);
+float ql_updateQ_steer(int s, int a, float r, int snew);
 float ql_updateQ_vel(int s, int a, float r, int snew);
 
 float ql_lambda_updateQ(int s, int a, float r, int snew);

@@ -504,8 +504,11 @@ void* learning_task(void* arg) {
 	//float progress = 0.0;
 	struct Car new_car;
 	char scan;
-	int s, a; // agent data
-	int d_l, d_r, d_f; // lidars distance
+	// agent data
+	int s;
+	struct Actions_ID a;
+	// lidars distance
+	int d_l, d_r, d_f; 
 
 	i = get_task_index(arg);
 	set_activation(i);
@@ -519,8 +522,8 @@ void* learning_task(void* arg) {
 		a = ql_egreedy_policy(s);
 		// correct only in single thread. should have mux otherwise
 		agents[j].state = s;
-		// sarsa
 		agents[j].a_id = a;
+		// sarsa
 		//printf("action for agent %d is %d\n", i, a[i]);
 	}
 	pthread_mutex_unlock(&mux_sensors);
@@ -658,7 +661,7 @@ void* comms_task(void* arg) {
 
 // defines the commands available via keyboard
 char interpreter() {
-	int i;
+	//int i;
 	float delta;
 	char scan;
 	struct Controls act;
@@ -670,7 +673,7 @@ char interpreter() {
 		delta = rad_to_deg(act.delta);
 		scan = get_scancode();
 		switch (scan) {
-			case KEY_UP:
+			case KEY_A:
 				act.a += (0.1 * G);
 				if (act.a > MAX_A)
 					act.a = MAX_A;
@@ -678,11 +681,19 @@ char interpreter() {
 				//if (car.v > MAX_V)
 				//	car.v = MAX_V;
 				break;
-			case KEY_DOWN:
+			case KEY_S:
 				act.a -= (0.1 * G);
 				if (act.a < MIN_A)
 					act.a = MIN_A;
 				//car.v -= 1;
+				break;
+			case KEY_UP:
+				MAX_V_ALLOWED += 1.0;
+				MAX_V_ALLOWED = (MAX_V_ALLOWED >= MAX_V) ? MAX_V : MAX_V_ALLOWED;
+				break;
+			case KEY_DOWN:
+				MAX_V_ALLOWED -= 1.0;
+				MAX_V_ALLOWED = (MAX_V_ALLOWED <= 0.0) ? 0.0 : MAX_V_ALLOWED;
 				break;
 			case KEY_LEFT:
 				delta += 5.0;
@@ -1066,6 +1077,13 @@ struct Car update_car_model(struct Agent agent) {
 	//norm_theta = deg_to_rad(theta_deg);
 
 	new_state.v = old_state.v + dt * (act.a); // - friction);
+	// clamp velocity to max velocity feasible
+	if (new_state.v > MAX_V)
+		new_state.v = MAX_V;
+	// don't allow reverse
+	if (new_state.v < 0.0)
+		new_state.v = 0.0;
+
 	vx = old_state.v*cos(old_state.theta);
 	vy = old_state.v*sin(old_state.theta);
 
@@ -1159,6 +1177,10 @@ void write_debug() {
 	sprintf(debug,"convergence delta: %.1f", (conv_delta/episode));
 	textout_ex(debug_bmp, font, debug, x, 150, white, -1);
 
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"max v: %f m/s", MAX_V_ALLOWED);
+	textout_ex(debug_bmp, font, debug, x, 160, white, -1);
+
 	//pthread_mutex_unlock(&mux_agent);
 
 	x = SIM_X;
@@ -1172,7 +1194,7 @@ float action_to_steering(int action_k) {
 	int n_actions = ql_get_nactions() -1;
 
 	if ((action_k < 0) || (action_k > n_actions)) {
-		printf("ERROR: AGENT action should be an index from 0 to %d\n", n_actions);
+		printf("ERROR: AGENT steering action should be an index from 0 to %d\n", n_actions);
 		exit(1);
 	}
 
@@ -1183,6 +1205,22 @@ float action_to_steering(int action_k) {
 	return z;
 }
 
+// encode action id to acceleration input
+float action_to_acc(int action_a) {
+	float x, y, z;
+	int n_actions_vel = ql_get_nactions_vel() -1;
+
+	if ((action_a < 0) || (action_a > n_actions_vel)) {
+		printf("ERROR: AGENT acceleration action should be an index from 0 to %d\n", n_actions_vel);
+		exit(1);
+	}
+
+	x = (float)action_a/n_actions_vel; // [0;1]
+	y = 2*x -1; // [-1;1]
+	z = MAX_A*y; //m/s^2 * scale
+
+	return z;
+}
 // combine left and right lidar by getting d_left - d_right
 // without Kohonen network
 // decode lidars distances to a Reinforcement Learning State
@@ -1262,6 +1300,13 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		r += dist * RWD_DISTANCE;
 		//printf("track_pos: %f \n", track_pos);
 		//printf("r: %f, dist: %f\n", r, dist);
+		// -------- acceleration ---------
+		if ((agent.action.a > 0) && (agent.car.v >= MAX_V_ALLOWED)) {
+			r += RWD_BAD_ACC;
+		}
+		else if ((agent.action.a <= 0) && (agent.car.v == 0)) {
+			r += RWD_BAD_ACC;
+		}
 		return r;
 		// reward for correct turn
 		if (d_right > d_left) {
@@ -1297,7 +1342,8 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 
 // multi thread learning algorithm
 float learn_to_drive() {
-	int a[MAX_AGENTS], s[MAX_AGENTS], s_new[MAX_AGENTS];
+	struct Actions_ID a[MAX_AGENTS];
+	int s[MAX_AGENTS], s_new[MAX_AGENTS];
 	float max_err, err;
 	float r[MAX_AGENTS];
 	int i, curr_s;
@@ -1316,15 +1362,15 @@ float learn_to_drive() {
 		d_r[i] = sensors[i][2].d;
 		s[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
 		a[i] = ql_egreedy_policy(s[i]);
-		//printf("action for agent %d is %d\n", i, a[i]);
+		//printf("action for agent %d is steer: %d, vel: %d\n", i, a[i].steer_act_id, a[i]..vel_act_id);
 	}
 	pthread_mutex_unlock(&mux_sensors);
 
 	pthread_mutex_lock(&mux_agent);
 	for(i = 0; i < MAX_AGENTS; i++) {
 		agent = agents[i];
-		agent.action.delta = action_to_steering(a[i]);
-		agent.action.a = 0.0;
+		agent.action.delta = action_to_steering(a[i].steer_act_id);
+		agent.action.a = action_to_acc(a[i].vel_act_id);
 		agent.car = update_car_model(agent);
 		
 
@@ -1365,13 +1411,14 @@ float learn_to_drive() {
 
 // initialize hyper parameters used by the Q-Learning algorithm
 void init_qlearn_params() {
-	int n_states, n_actions;
+	int n_states, n_actions_steer, n_actions_vel;
 
 	n_states = MAX_STATES_LIDAR*MAX_STATES_LIDAR;
 	//n_actions = (MAX_THETA * 2) - 1;
-	n_actions = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
-	printf("n_states: %d, n_actions: %d\n",n_states, n_actions);
-	ql_init(n_states, n_actions);
+	n_actions_steer = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
+	n_actions_vel = (int)((MAX_A/G * 2)/ACC_STEP) + 1;
+	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
+	ql_init(n_states, n_actions_steer, n_actions_vel);
 	// modify specific params by calling related function
 	ql_set_learning_rate(0.2);
 	ql_set_discount_factor(0.9);
@@ -1489,7 +1536,8 @@ void read_Q_matrix_from_file() {
 	while (fgets(q_buff, size, fp) != NULL) {
 		ptr = q_buff;
 		j = 0;
-		while (val = strtof(ptr, &ptr)) {
+		
+		while ((val = strtof(ptr, &ptr))) {
 			ql_set_Q_matrix(i, j, val);
 			j++;
 		}
@@ -1537,7 +1585,7 @@ void read_Tr_matrix_from_file() {
 	while (fgets(tr_buff, size, fp) != NULL) {
 		ptr = tr_buff;
 		j = 0;
-		while (val = strtof(ptr, &ptr)) {
+		while ((val = strtof(ptr, &ptr))) {
 			ql_set_Tr_matrix(i, j, val);
 			j++;
 		}
@@ -1549,7 +1597,8 @@ void read_Tr_matrix_from_file() {
 
 // handles learning under the single thread mode
 float single_thread_learning() {
-	int a[MAX_AGENTS], s[MAX_AGENTS], s_new[MAX_AGENTS];
+	struct Actions_ID a[MAX_AGENTS];
+	int s[MAX_AGENTS], s_new[MAX_AGENTS];
 	float max_err, err;
 	float r[MAX_AGENTS];
 	int i, curr_s;
@@ -1567,11 +1616,11 @@ float single_thread_learning() {
 		if (agent.alive == 0)
 			continue;
 
-		a[i] = ql_egreedy_policy_steer(agent.state);
-		agent.action.delta = action_to_steering(a[i]);
+		a[i] = ql_egreedy_policy(agent.state);
+		agent.action.delta = action_to_steering(a[i].steer_act_id);
+		agent.action.a = action_to_acc(a[i].vel_act_id);
 		// Sarsa
 		//agent.action.delta = action_to_steering(agent.a_id);
-		agent.action.a = 0.0;
 		agent.car = update_car_model(agent);
 		// find distance of agent on track
 		agent.distance = agent.distance + sqrt(pow((agents[i].car.x - agent.car.x), 2) + pow((agents->car.y - agent.car.y), 2));
@@ -1694,7 +1743,7 @@ void read_kw_from_file() {
 	while (fgets(kw_buff, size, fp) != NULL) {
 		ptr = kw_buff;
 		j = 0;
-		while (val = strtof(ptr, &ptr)) {
+		while ((val = strtof(ptr, &ptr))) {
 			set_kw_matrix(i, j, val);
 			j++;
 		}

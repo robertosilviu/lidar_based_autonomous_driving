@@ -238,6 +238,42 @@ void ql_reduce_expl() {
 	printf("Reducing exploration rate -> norm_eps: %f, epsilon: %f \n", norm_eps, epsilon);
 }
 
+float ql_maxQ(int s, int flag) {
+	int a;
+	float m;
+
+	if (flag == 0) {
+		m = Q[s][0];
+
+		for(a = 1; a < n_actions; a++) {
+			if (Q[s][a] > m) {
+				m = Q[s][a];
+				//printf("q: %d\n", Q[s][a]);
+			}
+
+		}
+	}
+	else if (flag == 1) {
+		m = Q_vel[s][0];
+
+		for(a = 1; a < n_actions_vel; a++) {
+			if (Q_vel[s][a] > m) {
+				m = Q_vel[s][a];
+				//printf("q: %d\n", Q_vel[s][a]);
+			}
+
+		}
+	}
+	else {
+		printf("ql_maxQ() error: not a valid input for -flag- argumment! \n");
+		exit(1);
+	}
+
+	//printf("m: %d\n", m);
+	return m;
+}
+
+/*
 float ql_maxQ(int s) {
 	int a;
 	float m;
@@ -254,14 +290,14 @@ float ql_maxQ(int s) {
 	//printf("m: %d\n", m);
 	return m;
 }
-
+*/
 float ql_maxQ_vel(int s) {
 	int a;
 	float m;
 
 	m = Q_vel[s][0];
 
-	for(a = 1; a < n_actions; a++) {
+	for(a = 1; a < n_actions_vel; a++) {
 		if (Q_vel[s][a] > m) {
 			m = Q_vel[s][a];
 			//printf("q: %d\n", Q[s][a]);
@@ -270,6 +306,46 @@ float ql_maxQ_vel(int s) {
 	}
 	//printf("m: %d\n", m);
 	return m;
+}
+
+struct Actions_ID ql_best_action(int s) {
+	int a, ba;
+	float m;
+	struct Actions_ID ql_act;
+
+	// steer
+	m = Q[s][0];
+	ba = 0;
+
+	for(a = 1; a < n_actions; a++) {
+		if (Q[s][a] > m) {
+			m = Q[s][a];
+			ba = a;
+		}
+	}
+	// when value is zero return casual action
+	if (Q[s][ba] == 0)
+		ba = rand()%n_actions;
+	
+	ql_act.steer_act_id = ba;
+
+	// velocity
+	m = Q_vel[s][0];
+	ba = 0;
+
+	for(a = 1; a < n_actions_vel; a++) {
+		if (Q_vel[s][a] > m) {
+			m = Q_vel[s][a];
+			ba = a;
+		}
+	}
+	// when value is zero return casual action
+	if (Q_vel[s][ba] == 0)
+		ba = rand()%n_actions_vel;
+	
+	ql_act.vel_act_id = ba;
+
+	return ql_act;
 }
 
 int ql_best_action_steer(int s) {
@@ -299,7 +375,7 @@ int ql_best_action_vel(int s) {
 	m = Q_vel[s][0];
 	ba = 0;
 
-	for(a = 1; a < n_actions; a++) {
+	for(a = 1; a < n_actions_vel; a++) {
 		if (Q_vel[s][a] > m) {
 			m = Q_vel[s][a];
 			ba = a;
@@ -307,7 +383,7 @@ int ql_best_action_vel(int s) {
 	}
 	// when value is zero return casual action
 	if (Q_vel[s][ba] == 0)
-		ba = rand()%n_actions;
+		ba = rand()%n_actions_vel;
 	
 	return ba;
 }
@@ -341,7 +417,44 @@ int ql_egreedy_policy_vel(int s) {
 		return ba;
 }
 
-float ql_updateQ(int s, int a, float r, int snew) {
+struct Actions_ID ql_egreedy_policy(int s) {
+	int ra;
+	float x;
+	struct Actions_ID old_actions, new_actions;
+	
+	old_actions = ql_best_action(s);
+	// update steer action
+	ra = rand()%n_actions;
+	x = frand(0.0, 1.0);
+	//printf("ra: %d, x: %f, ba: %d\n", ra, x, old_actions.steer_act_id);
+	if (x < epsilon)
+		new_actions.steer_act_id = ra;
+	else 
+		new_actions.steer_act_id = old_actions.steer_act_id;
+
+	// update velocity action
+	ra = rand()%n_actions_vel;
+	x = frand(0.0, 1.0);
+	//printf("ra: %d, x: %f, ba: %d\n", ra, x, old_actions.vel_act_id);
+	if (x < epsilon)
+		new_actions.vel_act_id = ra;
+	else 
+		new_actions.vel_act_id = old_actions.vel_act_id;
+
+	return new_actions;
+}
+
+float ql_updateQ(int s, struct Actions_ID a, float r, int snew) {
+	float q_target;	// target Q value
+	float td_err;	// TD error
+
+	td_err = ql_updateQ_steer(s, a.steer_act_id, r, snew);
+	ql_updateQ_vel(s, a.vel_act_id, r, snew);
+
+	return td_err;
+}
+
+float ql_updateQ_steer(int s, int a, float r, int snew) {
 	float q_target;	// target Q value
 	float td_err;	// TD error
 	//float old_q;
@@ -349,12 +462,12 @@ float ql_updateQ(int s, int a, float r, int snew) {
 	//td_err = q_target - Q[s][a];
 	//Q[s][a] = Q[s][a] + alpha*td_err;
 	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
-
+	int flag = 0; // flag to discern between steer and velocity q-learn update
 	
 	if (r == RWD_CRASH)
-		q_target = r + gam*ql_maxQ(s);
+		q_target = r + gam*ql_maxQ(s, flag);
 	else
-		q_target = r + gam*ql_maxQ(snew);
+		q_target = r + gam*ql_maxQ(snew, flag);
 	
 
 	//q_target = r + gam*ql_maxQ(snew);
@@ -375,12 +488,12 @@ float ql_updateQ_vel(int s, int a, float r, int snew) {
 	//td_err = q_target - Q[s][a];
 	//Q[s][a] = Q[s][a] + alpha*td_err;
 	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
-
+	int flag = 1;
 	
 	if (r == RWD_CRASH)
-		q_target = r + gam*ql_maxQ_vel(s);
+		q_target = r + gam*ql_maxQ(s, flag);
 	else
-		q_target = r + gam*ql_maxQ_vel(snew);
+		q_target = r + gam*ql_maxQ(snew, flag);
 	
 
 	//q_target = r + gam*ql_maxQ(snew);
@@ -400,8 +513,8 @@ float ql_lambda_updateQ(int s, int a, float r, int snew) {
 	float old_q;
 
 	old_q = Q[s][a];
-	max_s = ql_maxQ(s);
-	max_snew = ql_maxQ(snew);
+	max_s = ql_maxQ(s, 0);
+	max_snew = ql_maxQ(snew, 0);
 
 	e_dot = r + gam*max_snew - Q[s][a];
 	e = r + gam*max_snew - max_s;

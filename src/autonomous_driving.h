@@ -60,13 +60,15 @@
 #define G 9.8
 #define MAX_A (0.5*G)
 #define MIN_A (-0.5*G)
-#define MAX_V 300.0
+#define ACC_STEP 0.5
+
+#define MAX_V 30.0
 #define MIN_V 0.0
 #define MAX_AGENTS 1
 #define CRASH_DIST 3
 #define INFERENCE 1
 #define TRAINING 0
-#define TRAIN_VEL 5.0
+#define TRAIN_VEL 0.0 //5.0
 
 #define POOL_DIM 13
 #define BUF_LEN ((MAX_THETA*2)/ACTIONS_STEP)+1
@@ -128,9 +130,9 @@ struct Car {
 	float x;
 	float y;
 	float v;
+	//float a;
 	//float vx;
 	//float vy;
-	//float a;
 	//float delta;						// steering angle
 	float theta;							// heading angle
 };
@@ -146,7 +148,7 @@ struct Agent {
 	float distance;	// distance raced on track 
 	struct Controls action; // should save only action id and decode it 
 	int state;
-	int a_id;
+	struct Actions_ID a_id;
 	float error;
 	// da aggiungere il reward
 };
@@ -167,6 +169,7 @@ BITMAP *debug_bmp = NULL;
 BITMAP *deadline_bmp = NULL;
 BITMAP *graph_bmp = NULL;
 
+float MAX_V_ALLOWED = 5.0;
 struct Agent agent; // to be removed
 struct Agent agents[MAX_AGENTS];
 int end = 0;
@@ -231,6 +234,7 @@ struct Car update_car_model(struct Agent agent);
 void crash_check();
 int is_car_offtrack(struct Car car);
 float action_to_steering(int action_k);
+float action_to_acc(int action_a);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);
 float get_reward(struct Agent agent, int d_left, int d_front, int d_right);
 float learn_to_drive();
