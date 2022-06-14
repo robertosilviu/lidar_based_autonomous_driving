@@ -20,8 +20,9 @@
 #define RWD_STRAIGHT 2
 #define RWD_TURN_STRAIGHT -4
 #define RWD_OFF_CENTRE -1
-#define RWD_DISTANCE 0.5
+#define RWD_DISTANCE 0.1
 #define RWD_BAD_ACC -20
+#define RWD_CORRECT_ACC -1
 
 struct Actions_ID {
 	int steer_act_id;
