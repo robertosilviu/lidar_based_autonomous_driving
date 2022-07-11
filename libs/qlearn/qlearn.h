@@ -49,6 +49,7 @@ void ql_set_Q_matrix(int s, int a, float val);
 void ql_set_Q_vel_matrix(int s, int a, float val);
 void ql_set_Tr_matrix(int s, int a, float val);
 void ql_set_rl_mode(int val);
+void ql_set_train_mode(int val);
 
 float ql_get_learning_rate();
 float ql_get_discount_factor();
@@ -61,6 +62,7 @@ int ql_get_nstates();
 int ql_get_nactions();
 int ql_get_nactions_vel();
 int ql_get_rl_mode();
+int ql_get_train_mode();
 
 void ql_reduce_expl();
 float ql_maxQ(int s, int flag);

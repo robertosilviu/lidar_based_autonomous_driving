@@ -19,6 +19,7 @@ static float epsilon;					// actual exploration probability
 static float lambda = 0.3;
 // if mode is INFERENCE return always best actions
 static int mode = TRAINING;
+static int train_only_steering = 1;
 //----------------------------
 //	QL matrixes
 //----------------------------
@@ -163,6 +164,29 @@ void ql_set_Tr_matrix(int s, int a, float val) {
 	T_r[s][a] = val;
 }
 
+void ql_set_rl_mode(int val) {
+	if ((val != INFERENCE) && (val != TRAINING)) {
+		printf(" INVALID mode for qlearn library -> %d \n", val);
+		exit(1);
+	}
+
+	mode = val;
+}
+
+void ql_set_train_mode(int val) {
+	if ((val != 1) && (val != 0)) {
+		printf(" INVALID train mode for qlearn library -> %d \n", val);
+		exit(1);
+	}
+
+	if (val == 1)
+		printf("train_mode is: only STEERING \n");
+	else if (val == 0)
+		printf("train_mode is: STEERING + ACCELERATION\n");
+	
+	train_only_steering = val;
+}
+
 float ql_get_learning_rate() {
 	return alpha;
 }
@@ -233,17 +257,12 @@ int ql_get_nactions_vel() {
 	return n_actions_vel;
 }
 
-void ql_set_rl_mode(int val) {
-	if ((val != INFERENCE) && (val != TRAINING)) {
-		printf(" INVALID mode for qlearn library -> %d \n", val);
-		exit(1);
-	}
-
-	mode = val;
-}
-
 int ql_get_rl_mode() {
 	return mode;
+}
+
+int ql_get_train_mode() {
+	return train_only_steering;
 }
 
 void ql_reduce_expl() {
@@ -323,6 +342,7 @@ float ql_maxQ_vel(int s) {
 	return m;
 }
 
+// TO-DO: add condition for inference mode
 struct Actions_ID ql_best_action(int s) {
 	int a, ba;
 	float m;
@@ -344,6 +364,9 @@ struct Actions_ID ql_best_action(int s) {
 	
 	ql_act.steer_act_id = ba;
 
+	if(train_only_steering)
+		return ql_act;
+	
 	// velocity
 	m = Q_vel[s][0];
 	ba = 0;
@@ -448,6 +471,9 @@ struct Actions_ID ql_egreedy_policy(int s) {
 	else 
 		new_actions.steer_act_id = old_actions.steer_act_id;
 
+	if(train_only_steering)
+		return new_actions;
+
 	// update velocity action
 	ra = rand()%n_actions_vel;
 	x = frand(0.0, 1.0);
@@ -465,7 +491,7 @@ float ql_updateQ(int s, struct Actions_ID a, float r, int snew) {
 	float td_err;	// TD error
 
 	td_err = ql_updateQ_steer(s, a.steer_act_id, r, snew);
-	if (!ONLY_STEER_TRAINING)
+	if (!train_only_steering)
 		ql_updateQ_vel(s, a.vel_act_id, r, snew);
 
 	return td_err;

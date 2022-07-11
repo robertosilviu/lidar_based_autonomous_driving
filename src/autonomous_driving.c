@@ -513,6 +513,7 @@ void* learning_task(void* arg) {
 	struct Actions_ID a;
 	// lidars distance
 	int d_l, d_r, d_f; 
+	int train_only_steering = ql_get_train_mode();
 
 	i = get_task_index(arg);
 	set_activation(i);
@@ -577,10 +578,16 @@ void* learning_task(void* arg) {
 			for(j = 0; j < MAX_AGENTS; j++) {
 					agents[j].alive = 1;
 					agents[j].distance = 0.0;
-					new_car.v = TRAIN_VEL;
+					
+					// train_mode=1 -> train only steering
+					if (train_only_steering)
+						new_car.v = MAX_V_ALLOWED;
+					else
+						new_car.v = TRAIN_VEL;
 					new_car.x = pose_pool[pool_index][0];
 					new_car.y = pose_pool[pool_index][1];
 					new_car.theta = pose_pool[pool_index][2];
+					
 					agents[j].car = new_car;
 
 					// reset episode stats
@@ -806,13 +813,22 @@ char get_scancode() {
 void init_agent() {
 	struct Car vehicle;
 	int i;
+	int train_only_steering = ql_get_train_mode();
 	
 	printf("Initializing agent...\n");
 
+	if (train_only_steering)
+		printf("Training mode is: only STEERING \n");
+	else
+		printf("Training mode is: STEERING + ACCELERATION \n");
+	
 	vehicle.x = pose_pool[pool_index][0];
 	vehicle.y = pose_pool[pool_index][1];
 	vehicle.theta = pose_pool[pool_index][2];
-	vehicle.v = TRAIN_VEL;
+	if (train_only_steering)
+		vehicle.v = MAX_V_ALLOWED;
+	else
+		vehicle.v = TRAIN_VEL;
 	//vehicle.a = 0.0;
 	
 	for(i = 0; i < MAX_AGENTS; i++) {
@@ -1222,7 +1238,7 @@ void write_debug() {
 
 	index = episode - 1;
 	memset(debug, 0, sizeof debug);
-	printf(" td_error: %f \n \n", statistics[index].total_td_error);
+	//printf(" td_error: %f \n \n", statistics[index].total_td_error);
 	sprintf(debug,"ep. TD error: %.3f", statistics[index].total_td_error);
 	textout_ex(debug_bmp, font, debug, x, 170, white, -1);
 
@@ -1300,6 +1316,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	//float vx, vy, ca, sa;
 	int d_l, d_r;
 	float dist;
+	int train_only_steering = ql_get_train_mode();
 
 	track_pos = 0.0;
 	dist = 0.0;
@@ -1349,6 +1366,11 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		r += dist * RWD_DISTANCE;
 		//printf("track_pos: %f \n", track_pos);
 		//printf("r: %f, dist: %f\n", r, dist);
+
+		// don't consider the acceleration related reward change
+		if (train_only_steering)
+			return r;
+
 		// -------- acceleration ---------
 		if ((agent.action.a > 0) && (agent.car.v >= MAX_V_ALLOWED)) {
 			r = RWD_BAD_ACC;
@@ -1772,6 +1794,7 @@ float single_thread_learning() {
 	int d_l[MAX_AGENTS], d_f[MAX_AGENTS], d_r[MAX_AGENTS]; // lidar distances
 	int act;
 	float updated_distance;
+	int train_only_steering = ql_get_train_mode();
 
 	max_err = 0.0;
 	err = 0.0;
@@ -1784,7 +1807,10 @@ float single_thread_learning() {
 
 		a[i] = ql_egreedy_policy(agent.state);
 		agent.action.delta = action_to_steering(a[i].steer_act_id);
-		agent.action.a = action_to_acc(a[i].vel_act_id);
+		if (train_only_steering)
+			agent.action.a = 0.0;
+		else
+			agent.action.a = action_to_acc(a[i].vel_act_id);
 		// Sarsa
 		//agent.action.delta = action_to_steering(agent.a_id);
 		agent.car = update_car_model(agent);
