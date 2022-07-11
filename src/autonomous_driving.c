@@ -9,11 +9,13 @@
 
 
 int main() {
-	int ret;
+	int ret, mode;
 	printf("Starting app...\n");
 
 	init();
 	//printf("here app...\n");
+	mode = ql_get_rl_mode();
+
 	if (mode == TRAINING) {
 		ret = wait_for_task(LEARNING_ID);
 	} else {
@@ -34,7 +36,7 @@ int main() {
 }
 
 void init() {
-	int w, h, i;
+	int w, h, i, mode;
 	allegro_init();
 	install_keyboard();
 
@@ -85,6 +87,8 @@ void init() {
 	refresh_sensors();
 	update_scene();
 	
+	mode = ql_get_rl_mode();
+
 	if (mode == TRAINING) {
 		task_create(learning_task, LEARNING_ID, LEARNING_PER, LEARNING_DLR, LEARNING_PRIO);
 	} else {
@@ -431,7 +435,7 @@ void* display_task(void* arg) {
 
 // handles the agent thread
 void* agent_task(void* arg) {
-	int i, j, alive_flag;
+	int i, j, alive_flag, mode;
 	//float progress = 0.0;
 	struct Car new_car;
 
@@ -442,7 +446,7 @@ void* agent_task(void* arg) {
 	//new_car.x = 0.0;
 	//new_car.y = 0.0;
 	//new_car.theta = deg_to_rad(INIT_THETA);
-	
+	mode = ql_get_rl_mode();
 
 	do {	
 		crash_check();
@@ -500,7 +504,7 @@ void* agent_task(void* arg) {
 
 // handles the learning thread
 void* learning_task(void* arg) {
-	int i, j, alive_flag;
+	int i, j, alive_flag, index;
 	//float progress = 0.0;
 	struct Car new_car;
 	char scan;
@@ -553,6 +557,11 @@ void* learning_task(void* arg) {
 		if(alive_flag == 0) {
 			// reset max TD_ERROR
 			conv_delta = 0;
+			// handle only first agent of now
+			// should be inserted in the for cycle
+			index = episode-1;
+			statistics[index] = agents[0].ep_stats;
+
 			episode++;
 			
 			//if(((episode%200) == 0) && (episode > 100))
@@ -573,6 +582,14 @@ void* learning_task(void* arg) {
 					new_car.y = pose_pool[pool_index][1];
 					new_car.theta = pose_pool[pool_index][2];
 					agents[j].car = new_car;
+
+					// reset episode stats
+					struct EpisodeStats stats;
+					stats.steps = 0;
+					stats.total_reward = 0.0;
+					stats.total_td_error = 0.0;
+
+					agents[j].ep_stats = stats;
 					//printf("Reset agent %d!\n", j);
 			}
 			// refresh sensors with initial pose
@@ -615,9 +632,12 @@ void* learning_task(void* arg) {
 	} while (!end);
 	// save Q learning matrix on file for further use
 	save_Q_matrix_to_file();
+	save_Q_vel_matrix_to_file();
 	save_Tr_matrix_to_file();
 	// save Kohonen weights matrix on file for further use
 	save_kw_to_file();
+	// save episodes statistics on file for further analysis 
+	save_episodes_stats_to_file();
 
 	return NULL;
 }
@@ -662,6 +682,7 @@ void* comms_task(void* arg) {
 // defines the commands available via keyboard
 char interpreter() {
 	//int i;
+	int mode;
 	float delta;
 	char scan;
 	struct Controls act;
@@ -708,12 +729,15 @@ char interpreter() {
 				act.delta = deg_to_rad(delta);
 				break;
 			case KEY_M:
+				mode = ql_get_rl_mode();
 				if( mode == TRAINING) {
-					mode = INFERENCE;
+					ql_set_rl_mode(INFERENCE);
+					printf("Changing rl mode: TRAINING -> INFERENCE \n");
 				}else if( mode == INFERENCE) {
-					mode = TRAINING;
+					ql_set_rl_mode(TRAINING);
+					printf("Changing rl mode: INFERENCE -> TRAINING \n");
 				}else {
-					printf("ERROR: wrong mode! Should be 0 or 1\n");
+					printf("ERROR: wrong mode! Should be %d or %d\n", TRAINING, INFERENCE);
 					exit(1);
 				}
 				break;
@@ -722,6 +746,7 @@ char interpreter() {
 				pthread_mutex_lock(&mux_q_matrix);
 				// Q Learning
 				read_Q_matrix_from_file();
+				read_Q_vel_matrix_from_file();
 				read_Tr_matrix_from_file();
 				// Kohonen network
 				read_kw_from_file();
@@ -796,6 +821,13 @@ void init_agent() {
 		agents[i].car = vehicle;
 		agents[i].error = 0.0;
 		agents[i].state = 0; // should be checked if it is ok to use a wrong state
+
+		// reset episode stats
+		struct EpisodeStats stats;
+		stats.steps = 0;
+		stats.total_reward = 0.0;
+		stats.total_td_error = 0.0;
+		agents[i].ep_stats = stats;
 	}
 }
 
@@ -1107,6 +1139,8 @@ void write_debug() {
 	int white;
 	int x, y;
 	int i;
+	int index;
+	int mode;
 	struct Agent agent;
 	
 	x = 0;
@@ -1174,13 +1208,27 @@ void write_debug() {
 	textout_ex(debug_bmp, font, debug, x, 140, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"convergence delta: %.1f", (conv_delta/episode));
+	if (ql_get_rl_mode() == INFERENCE) {
+		sprintf(debug,"RL mode: inference");
+	}
+	else if (ql_get_rl_mode() == TRAINING) {
+		sprintf(debug,"RL mode: training");
+	}
 	textout_ex(debug_bmp, font, debug, x, 150, white, -1);
 
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"max v: %f m/s", MAX_V_ALLOWED);
 	textout_ex(debug_bmp, font, debug, x, 160, white, -1);
 
+	index = episode - 1;
+	memset(debug, 0, sizeof debug);
+	printf(" td_error: %f \n \n", statistics[index].total_td_error);
+	sprintf(debug,"ep. TD error: %.3f", statistics[index].total_td_error);
+	textout_ex(debug_bmp, font, debug, x, 170, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"ep. reward: %.3f", statistics[index].total_reward);
+	textout_ex(debug_bmp, font, debug, x, 180, white, -1);
 	//pthread_mutex_unlock(&mux_agent);
 
 	x = SIM_X;
@@ -1296,18 +1344,30 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		// decrese reward when car is off-center
 		//r -= track_pos;
 		//dist = (float)agent.distance/20.0;
+
 		dist = floor(agent.distance/20.0);
 		r += dist * RWD_DISTANCE;
 		//printf("track_pos: %f \n", track_pos);
 		//printf("r: %f, dist: %f\n", r, dist);
 		// -------- acceleration ---------
 		if ((agent.action.a > 0) && (agent.car.v >= MAX_V_ALLOWED)) {
-			r += RWD_BAD_ACC;
+			r = RWD_BAD_ACC;
 		}
 		else if ((agent.action.a <= 0) && (agent.car.v == 0)) {
-			r += RWD_BAD_ACC;
+			r = RWD_BAD_ACC;
 		}
+		//else if (agent.car.v > (MAX_V_ALLOWED+1.0)) {
+		//	r = RWD_BAD_ACC;
+		//}
+		else if (agent.car.v >= MAX_V_ALLOWED){
+			r+= RWD_CORRECT_ACC*(agent.car.v/MAX_V_ALLOWED);
+		}
+		else if (agent.car.v < MAX_V_ALLOWED){
+			r+= (agent.car.v/MAX_V_ALLOWED);
+		}
+		
 		return r;
+		// check if it should be deleted
 		// reward for correct turn
 		if (d_right > d_left) {
 			if (agent.action.delta < 0)
@@ -1420,11 +1480,32 @@ void init_qlearn_params() {
 	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
 	ql_init(n_states, n_actions_steer, n_actions_vel);
 	// modify specific params by calling related function
-	ql_set_learning_rate(0.2);
+	ql_set_learning_rate(0.5);
 	ql_set_discount_factor(0.9);
-	ql_set_expl_factor(0.1);
-	ql_set_expl_range(0.1, 0.01);
-	ql_set_expl_decay(0.95);
+	ql_set_expl_factor(0.5);
+	ql_set_expl_range(0.5, 0.01);
+	ql_set_expl_decay(0.99);
+}
+
+void save_episodes_stats_to_file() {
+	FILE *fp;
+	int i;
+	
+	fp = fopen(EPISODES_STATS_FILE_NAME, "w");
+	if (fp == NULL) {
+		printf("ERROR: could not open file to write episodes statistics array\n");
+		exit(1);
+	}
+	// save the number of states and actions
+	fprintf(fp, "%d\n", episode);
+	// save values of Q Matrix
+	for(i = 0; i < episode; i++) {
+		fprintf(fp, "%d %.2f %.2f", statistics[i].steps, statistics[i].total_td_error, statistics[i].total_reward);
+		fprintf(fp, "\n");
+	}
+	
+	fclose(fp);
+	printf("Episodes statistics array saved on file %s!\n", EPISODES_STATS_FILE_NAME);
 }
 
 // save Q Matrix to file
@@ -1459,6 +1540,39 @@ void save_Q_matrix_to_file() {
 	
 	fclose(fp);
 	printf("Q matrix saved on file %s!\n", Q_MAT_FILE_NAME);
+}
+
+void save_Q_vel_matrix_to_file() {
+	FILE *fp;
+	int n_states, n_actions;
+	int i, j;
+	n_states = ql_get_nstates();
+	n_actions = ql_get_nactions_vel();
+	float Q_tmp[n_states][n_actions];
+	
+	for(i = 0; i < n_states; i++) {
+		for(j = 0; j < n_actions; j++) {
+			Q_tmp[i][j] = ql_get_Q_vel(i, j);
+		}
+	}
+
+	fp = fopen(Q_VEL_MAT_FILE_NAME, "w");
+	if (fp == NULL) {
+		printf("ERROR: could not open file to write Q_vel matrix\n");
+		exit(1);
+	}
+	// save the number of states and actions
+	fprintf(fp, "%d %d\n", n_states, n_actions);
+	// save values of Q Matrix
+	for(i = 0; i < n_states; i++) {
+		for(j = 0; j < n_actions; j++) {
+			fprintf(fp, "%.2f ", Q_tmp[i][j]);
+		}
+		fprintf(fp, "\n");
+	}
+	
+	fclose(fp);
+	printf("Q_vel matrix saved on file %s!\n", Q_VEL_MAT_FILE_NAME);
 }
 
 // save to filer T_r Matrix used by the Q(lambda) algorithm
@@ -1544,7 +1658,58 @@ void read_Q_matrix_from_file() {
 		i++;
 	}
 	printf(" new Q val: %f \n", ql_get_Q(27,0));
-	printf("Q Matrix restored!\n");
+	printf("Q matrix restored!\n");
+}
+
+void read_Q_vel_matrix_from_file() {
+
+	FILE *fp;
+	int dim_states_f, dim_actions_f, n_states, n_actions;
+	char buf[50];
+	char q_buff[1024];
+	int size;
+	char *ptr;
+	float val;
+	int i, j; // indexes to use for matrix
+
+	n_states = ql_get_nstates();
+	n_actions = ql_get_nactions_vel();
+	i = 0;
+	j = 0;
+	fp = fopen(Q_VEL_MAT_FILE_NAME, "r");
+
+	size = 50;
+	if (fp == NULL) {
+		printf("ERROR: could not open file to read Q_vel matrix\n");
+		exit(1);
+	}
+	// check saved Q matrix dimensions from file
+	if (fgets(buf, size, fp) != NULL) {
+		sscanf(buf, " %d %d", &dim_states_f, &dim_actions_f);
+		if (dim_states_f != n_states) {
+			printf("ERROR: STATES dimension different from current Q_vel matrix configuration!\n");
+			exit(1);
+		}
+		if (dim_actions_f != n_actions) {
+			printf("ERROR: ACTIONS dimension different from current Q_vel matrix configuration!\n");
+			exit(1);
+		}
+	}
+
+	printf(" previous Q_vel val: %f \n", ql_get_Q_vel(27,0));
+	size = 1024;
+	while (fgets(q_buff, size, fp) != NULL) {
+		ptr = q_buff;
+		j = 0;
+		
+		while ((val = strtof(ptr, &ptr))) {
+			ql_set_Q_vel_matrix(i, j, val);
+			j++;
+		}
+		i++;
+	}
+	printf(" new Q_vel val: %f \n", ql_get_Q_vel(27,0));
+	printf("Q_vel matrix restored!\n");
 }
 
 void read_Tr_matrix_from_file() {
@@ -1606,6 +1771,7 @@ float single_thread_learning() {
 	struct Lidar car_sensors[3];
 	int d_l[MAX_AGENTS], d_f[MAX_AGENTS], d_r[MAX_AGENTS]; // lidar distances
 	int act;
+	float updated_distance;
 
 	max_err = 0.0;
 	err = 0.0;
@@ -1623,8 +1789,8 @@ float single_thread_learning() {
 		//agent.action.delta = action_to_steering(agent.a_id);
 		agent.car = update_car_model(agent);
 		// find distance of agent on track
-		agent.distance = agent.distance + sqrt(pow((agents[i].car.x - agent.car.x), 2) + pow((agents->car.y - agent.car.y), 2));
-		
+		updated_distance = agent.distance + sqrt(pow((agents[i].car.x - agent.car.x), 2) + pow((agents->car.y - agent.car.y), 2));
+		agent.distance = updated_distance;
 		get_updated_lidars_distance(agent.car, car_sensors);
 		d_l[i] = car_sensors[0].d;
 		d_f[i] = car_sensors[1].d;
@@ -1652,6 +1818,9 @@ float single_thread_learning() {
 		// update agent state
 		agent.state = s_new[i];
 		agent.a_id = a[i];
+		agent.ep_stats.steps++;
+		agent.ep_stats.total_reward += r[i];
+		agent.ep_stats.total_td_error += err;
 		// Sarsa
 		//agent.a_id = a_new;
 		agents[i] = agent;

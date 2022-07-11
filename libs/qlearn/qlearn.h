@@ -24,9 +24,19 @@
 #define RWD_BAD_ACC -20
 #define RWD_CORRECT_ACC -1
 
+#define ONLY_STEER_TRAINING 0
+#define INFERENCE 1
+#define TRAINING 0
+
 struct Actions_ID {
 	int steer_act_id;
 	int vel_act_id;
+};
+
+struct EpisodeStats {
+	int steps;
+	float total_td_error;
+	float total_reward;
 };
 
 void ql_init(int ns, int na, int na_vel);
@@ -38,6 +48,7 @@ void ql_set_expl_factor(float e);
 void ql_set_Q_matrix(int s, int a, float val);
 void ql_set_Q_vel_matrix(int s, int a, float val);
 void ql_set_Tr_matrix(int s, int a, float val);
+void ql_set_rl_mode(int val);
 
 float ql_get_learning_rate();
 float ql_get_discount_factor();
@@ -49,6 +60,7 @@ float ql_get_Tr(int s, int a);
 int ql_get_nstates();
 int ql_get_nactions();
 int ql_get_nactions_vel();
+int ql_get_rl_mode();
 
 void ql_reduce_expl();
 float ql_maxQ(int s, int flag);

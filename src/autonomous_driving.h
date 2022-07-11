@@ -32,7 +32,7 @@
 #define ASPHALT 7303283
 //#define WHITE 15
 
-#define DMISS_H 200
+#define DMISS_H 250
 #define SIM_X 800
 #define SIM_Y 800
 #define XCEN_SIM (SIM_X/2)
@@ -58,16 +58,15 @@
 #define C_R 0.8 				// friction coefficient
 #define C_A 2.0					// aerodynamic coefficient
 #define G 9.8
-#define MAX_A (0.5*G)
-#define MIN_A (-0.5*G)
-#define ACC_STEP 0.5
+#define MAX_A (0.2*G)
+#define MIN_A (-0.2*G)
+#define ACC_STEP 0.2
 
 #define MAX_V 30.0
 #define MIN_V 0.0
 #define MAX_AGENTS 1
 #define CRASH_DIST 3
-#define INFERENCE 1
-#define TRAINING 0
+
 #define TRAIN_VEL 0.0 //5.0
 
 #define POOL_DIM 13
@@ -92,7 +91,7 @@
 // handles learning process 
 #define LEARNING_ID 4
 #define LEARNING_PRIO 10
-#define LEARNING_PER 50	// ms
+#define LEARNING_PER 70	// ms
 #define LEARNING_DLR 50
 // handles sensors reading
 #define SENSORS_ID 3
@@ -107,9 +106,15 @@
 #define GRAPHICS_PER 25	// ms
 #define GRAPHICS_DLR 25
 
+#define EPISODES_STATS_FILE_NAME "episodes_stats.txt"
 #define Q_MAT_FILE_NAME "q_matrix.txt"
+#define Q_VEL_MAT_FILE_NAME "q_vel_matrix.txt"
 #define Tr_MAT_FILE_NAME "t_r_matrix.txt"
 #define KW_MAT_FILE_NAME "kw_matrix.txt"
+
+// max number of episodes which 
+// can be used for statistics related to Q-Learning
+#define MAX_EPISODES 50000
 /*-----------------------------------------------------------------------------*/
 /*								CUSTOM STRUCTURES							   */
 /*-----------------------------------------------------------------------------*/
@@ -150,6 +155,7 @@ struct Agent {
 	int state;
 	struct Actions_ID a_id;
 	float error;
+	struct EpisodeStats ep_stats;
 	// da aggiungere il reward
 };
 
@@ -159,6 +165,7 @@ struct cbuf {
 	int x[BUF_LEN];
 	int y[BUF_LEN];
 };
+
 /*-----------------------------------------------------------------------------*/
 /*								GLOBAL VARIABLES							   */
 /*-----------------------------------------------------------------------------*/
@@ -174,16 +181,20 @@ struct Agent agent; // to be removed
 struct Agent agents[MAX_AGENTS];
 int end = 0;
 char debug[LEN];
-int mode = TRAINING;
+
 struct Lidar sensors[MAX_AGENTS][3];
 int disable_sensors = 0;
 
 struct cbuf graph_buff;
-int episode = 1;
 int graph_index = 0;
 
 float max_reward = RWD_CRASH;
 float conv_delta = 0.0;
+
+// array which keeps trace of each episode statistics 
+// of first agent 
+struct EpisodeStats statistics[MAX_EPISODES];
+int episode = 1;
 
 float init_x_offset = 0;
 float init_y_offset = 0;
@@ -239,8 +250,12 @@ int decode_lidar_to_state(int d_left, int d_right, int d_front);
 float get_reward(struct Agent agent, int d_left, int d_front, int d_right);
 float learn_to_drive();
 float single_thread_learning();
+
+void save_episodes_stats_to_file();
 void save_Q_matrix_to_file();
 void read_Q_matrix_from_file();
+void save_Q_vel_matrix_to_file();
+void read_Q_vel_matrix_from_file();
 void save_Tr_matrix_to_file();
 void read_Tr_matrix_from_file();
 void init_pool_poses();
