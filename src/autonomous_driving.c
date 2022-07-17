@@ -578,6 +578,7 @@ void* learning_task(void* arg) {
 			for(j = 0; j < MAX_AGENTS; j++) {
 					agents[j].alive = 1;
 					agents[j].distance = 0.0;
+					rwd_distance_counter = 0.0;
 					
 					// train_mode=1 -> train only steering
 					if (train_only_steering)
@@ -1081,7 +1082,9 @@ struct Car update_car_model(struct Agent agent) {
 	float omega;
 	// /float friction;
 	float norm_theta, theta_deg;
+	float max_v;
 
+	(MAX_V > MAX_V_ALLOWED) ? (max_v = MAX_V_ALLOWED) : (max_v = MAX_V);
 	//pthread_mutex_lock(&mux_agent);
 	dt = T_SCALE * (float)AGENT_PER/1000;
 	//dt = (float)AGENT_PER/1000;
@@ -1126,8 +1129,8 @@ struct Car update_car_model(struct Agent agent) {
 
 	new_state.v = old_state.v + dt * (act.a); // - friction);
 	// clamp velocity to max velocity feasible
-	if (new_state.v > MAX_V)
-		new_state.v = MAX_V;
+	if (new_state.v > max_v)
+		new_state.v = max_v;
 	// don't allow reverse
 	if (new_state.v < 0.0)
 		new_state.v = 0.0;
@@ -1311,7 +1314,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	float r = 0;
 	//int d_left, d_front, d_right;
 	//struct Agent agent;
-	float track_pos; // distance between car's (x,y) and centre of track
+	float track_pos, track_center; // distance between car's (x,y) and centre of track
 	float x, y, alpha;
 	//float vx, vy, ca, sa;
 	int d_l, d_r;
@@ -1322,16 +1325,18 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	dist = 0.0;
 	
 	// compute left distance perpendicular to car's (x,y) 
-	alpha = deg_to_rad(agent.car.theta + 90.0);
+	alpha = agent.car.theta + deg_to_rad(90.0);
 	x = BTM_X + (agent.car.x/SCALE);
 	y = SIM_Y - (BTM_Y + agent.car.y/SCALE);
 	d_l = read_sensor(x, y, alpha);
 	// compute right distance
-	alpha = deg_to_rad(agent.car.theta - 90.0);
+	alpha = agent.car.theta + deg_to_rad(-90.0);
 	x = BTM_X + (agent.car.x/SCALE);
 	y = SIM_Y - (BTM_Y + agent.car.y/SCALE);
 	d_r = read_sensor(x, y, alpha);
 	
+	track_center = (d_l + d_r)/2;
+	track_pos = fabs(d_l - d_r);
 	//printf("d_l: %d, d_r: %d \n", d_l, d_r);
 	// compute distance from track centre
 	/*
@@ -1340,8 +1345,8 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	else 
 		track_pos = d_l - (d_r + d_l)/2;
 	*/
-	track_pos = fabs(d_left - d_right)/100;
-	//printf("d_l: %d, d_r: %d, t_p: %f\n", d_l, d_r, track_pos);
+	//track_pos = fabs(d_left - d_right)/100;
+	//printf("d_l: %d, d_r: %d, d_f: %d\n", d_l, d_r, d_front);
 	// compute vx and vy
 	//ca = cos(agent.car.theta);
 	//sa = sin(agent.car.theta);
@@ -1352,6 +1357,10 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	if (is_car_offtrack(agent.car)) {
 		return RWD_CRASH;
 	} else {
+		// TO-DO
+		// 1) add reward based of distance from track centre
+		// 2) change distance reward based on counter that gives positive reward every x meters on track and not relative to total distance of car
+		// 3) add saturation of velocity instead of behavior with deccelerion if > max_v_allowed
 		//r = ALPHA_REWARD * (vx + vy - agent.car.v*fabs(track_pos));
 		// reward for staying alive
 		//return RWD_ALIVE;
@@ -1362,15 +1371,25 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		//r -= track_pos;
 		//dist = (float)agent.distance/20.0;
 
-		dist = floor(agent.distance/20.0);
-		r += dist * RWD_DISTANCE;
+		//dist = floor(agent.distance/20.0);
+		//r += dist * RWD_DISTANCE;
+		if (agent.distance >= (rwd_distance_counter + DIST_THRESHOLD_RWD)) {
+			r += RWD_DISTANCE;
+			//printf("Adding reward %.2f for distance on track \n", DIST_THRESHOLD_RWD);
+			rwd_distance_counter += DIST_THRESHOLD_RWD;
+		}
+
+		// compute reward in relation with distance from track center
+		if ((track_pos < 10) && (d_front > 30)) {
+			r += RWD_ON_CENTRE;
+			//printf("near the center of track: %.3f \n", track_pos);
+		}
 		//printf("track_pos: %f \n", track_pos);
 		//printf("r: %f, dist: %f\n", r, dist);
 
 		// don't consider the acceleration related reward change
 		if (train_only_steering)
 			return r;
-
 		// -------- acceleration ---------
 		if ((agent.action.a > 0) && (agent.car.v >= MAX_V_ALLOWED)) {
 			r = RWD_BAD_ACC;
@@ -1381,13 +1400,14 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		//else if (agent.car.v > (MAX_V_ALLOWED+1.0)) {
 		//	r = RWD_BAD_ACC;
 		//}
-		else if (agent.car.v >= MAX_V_ALLOWED){
-			r+= RWD_CORRECT_ACC*(agent.car.v/MAX_V_ALLOWED);
-		}
-		else if (agent.car.v < MAX_V_ALLOWED){
-			r+= (agent.car.v/MAX_V_ALLOWED);
-		}
+		//else if (agent.car.v >= MAX_V_ALLOWED){
+		//	r+= RWD_CORRECT_ACC*(agent.car.v/MAX_V_ALLOWED);
+		//}
+		//else if (agent.car.v < MAX_V_ALLOWED){
+		//	r+= (agent.car.v/MAX_V_ALLOWED);
+		//}
 		
+		//printf("r: %f\n", r);
 		return r;
 		// check if it should be deleted
 		// reward for correct turn
@@ -1502,11 +1522,11 @@ void init_qlearn_params() {
 	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
 	ql_init(n_states, n_actions_steer, n_actions_vel);
 	// modify specific params by calling related function
-	ql_set_learning_rate(0.5);
+	ql_set_learning_rate(1.0);
 	ql_set_discount_factor(0.9);
-	ql_set_expl_factor(0.5);
-	ql_set_expl_range(0.5, 0.01);
-	ql_set_expl_decay(0.99);
+	ql_set_expl_factor(0.2);
+	ql_set_expl_range(0.2, 0.01);
+	ql_set_expl_decay(0.8);
 }
 
 void save_episodes_stats_to_file() {

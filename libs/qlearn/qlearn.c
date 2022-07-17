@@ -19,7 +19,7 @@ static float epsilon;					// actual exploration probability
 static float lambda = 0.3;
 // if mode is INFERENCE return always best actions
 static int mode = TRAINING;
-static int train_only_steering = 1;
+static int train_only_steering = 0;
 //----------------------------
 //	QL matrixes
 //----------------------------
@@ -43,7 +43,7 @@ void ql_init(int ns, int na, int na_vel) {
 	int s, a;
 	n_states = ns;
 	n_actions = na;
-	n_actions_vel = na;
+	n_actions_vel = na_vel;
 
 	if(n_states > MAX_STATES) {
 		printf("Number of states exceeds max limit!\n");
@@ -507,11 +507,11 @@ float ql_updateQ_steer(int s, int a, float r, int snew) {
 	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
 	int flag = 0; // flag to discern between steer and velocity q-learn update
 	
-	//if (r == RWD_CRASH)
-	//	q_target = r + gam*ql_maxQ(s, flag);
-	//else
-	//	q_target = r + gam*ql_maxQ(snew, flag);
-	q_target = r + gam*ql_maxQ(snew, flag);
+	if (r == RWD_CRASH)
+		q_target = r + gam*ql_maxQ(s, flag);
+	else
+		q_target = r + gam*ql_maxQ(snew, flag);
+	//q_target = r + gam*ql_maxQ(snew, flag);
 
 	//q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q[s][a];
@@ -534,11 +534,11 @@ float ql_updateQ_vel(int s, int a, float r, int snew) {
 	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
 	int flag = 1;
 	
-	//if (r == RWD_CRASH)
-	//	q_target = r + gam*ql_maxQ(s, flag);
-	//else
-	//	q_target = r + gam*ql_maxQ(snew, flag);
-	q_target = r + gam*ql_maxQ(snew, flag);
+	if (r == RWD_CRASH)
+		q_target = r + gam*ql_maxQ(s, flag);
+	else
+		q_target = r + gam*ql_maxQ(snew, flag);
+	//q_target = r + gam*ql_maxQ(snew, flag);
 	
 
 	//q_target = r + gam*ql_maxQ(snew);

@@ -38,7 +38,7 @@
 #define XCEN_SIM (SIM_X/2)
 #define YCEN_SIM (SIM_Y/2)
 #define SCALE 0.16 // 1px = 0.16m
-#define T_SCALE 10.0
+#define T_SCALE 30.0
 
 #define INIT_CAR_X 570
 #define INIT_CAR_Y 650
@@ -66,6 +66,7 @@
 #define MIN_V 0.0
 #define MAX_AGENTS 1
 #define CRASH_DIST 3
+#define DIST_THRESHOLD_RWD 20.0
 
 #define TRAIN_VEL 0.0 //5.0
 
@@ -181,6 +182,7 @@ struct Agent agent; // to be removed
 struct Agent agents[MAX_AGENTS];
 int end = 0;
 char debug[LEN];
+float rwd_distance_counter = 0.0;
 
 struct Lidar sensors[MAX_AGENTS][3];
 int disable_sensors = 0;
