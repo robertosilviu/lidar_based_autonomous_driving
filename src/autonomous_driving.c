@@ -1275,7 +1275,7 @@ float action_to_steering(int action_k) {
 // encode action id to acceleration input
 float action_to_acc(int action_a) {
 	float x, y, z;
-	int n_actions_vel = ql_get_nactions_vel() -1;
+	int n_actions_vel = ql_get_nactions_vel() - 1;
 
 	if ((action_a < 0) || (action_a > n_actions_vel)) {
 		printf("ERROR: AGENT acceleration action should be an index from 0 to %d\n", n_actions_vel);
@@ -1283,7 +1283,7 @@ float action_to_acc(int action_a) {
 	}
 
 	x = (float)action_a/n_actions_vel; // [0;1]
-	y = 2*x -1; // [-1;1]
+	y = 2*x - 1; // [-1;1]
 	z = MAX_A*y; //m/s^2 * scale
 
 	return z;
@@ -1320,6 +1320,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	int d_l, d_r;
 	float dist;
 	int train_only_steering = ql_get_train_mode();
+	float old_steer_delta, new_steer_delta;
 
 	track_pos = 0.0;
 	dist = 0.0;
@@ -1384,7 +1385,13 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 			r += RWD_ON_CENTRE;
 			//printf("near the center of track: %.3f \n", track_pos);
 		}
-		//printf("track_pos: %f \n", track_pos);
+		// compute reward in relation with the variation of delta steering
+		old_steer_delta = rad_to_deg(rwd_previous_delta);
+		new_steer_delta = rad_to_deg(agent.action.delta);
+		float variance = fabs((old_steer_delta - new_steer_delta)/MAX_THETA);
+		//printf("variance: %f, reward: %f\n", variance, (variance*RWD_STEER_DELTA_GAP));
+		//printf("old steer: %f, new steer: %f \n", old_steer_delta, new_steer_delta);
+		//r += RWD_STEER_DELTA_GAP * variance;
 		//printf("r: %f, dist: %f\n", r, dist);
 
 		// don't consider the acceleration related reward change
@@ -1522,11 +1529,11 @@ void init_qlearn_params() {
 	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
 	ql_init(n_states, n_actions_steer, n_actions_vel);
 	// modify specific params by calling related function
-	ql_set_learning_rate(1.0);
-	ql_set_discount_factor(0.9);
-	ql_set_expl_factor(0.2);
-	ql_set_expl_range(0.2, 0.01);
-	ql_set_expl_decay(0.8);
+	ql_set_learning_rate(0.6);
+	ql_set_discount_factor(0.95);
+	ql_set_expl_factor(0.4);
+	ql_set_expl_range(0.4, 0.1);
+	ql_set_expl_decay(0.95);
 }
 
 void save_episodes_stats_to_file() {
@@ -1826,6 +1833,7 @@ float single_thread_learning() {
 			continue;
 
 		a[i] = ql_egreedy_policy(agent.state);
+		rwd_previous_delta = agent.action.delta;
 		agent.action.delta = action_to_steering(a[i].steer_act_id);
 		if (train_only_steering)
 			agent.action.a = 0.0;

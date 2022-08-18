@@ -24,6 +24,7 @@
 #define RWD_DISTANCE 5 //0.1
 #define RWD_BAD_ACC -50
 #define RWD_CORRECT_ACC -1
+#define RWD_STEER_DELTA_GAP -2
 
 #define ONLY_STEER_TRAINING 1
 #define INFERENCE 1
