@@ -1,6 +1,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include "qlearn.h"
 
@@ -258,6 +259,7 @@ int ql_get_nactions_vel() {
 }
 
 int ql_get_rl_mode() {
+	//assert((mode == 0) || (mode == 1));
 	return mode;
 }
 
@@ -268,6 +270,9 @@ int ql_get_train_mode() {
 void ql_reduce_expl() {
 	norm_eps = decay*norm_eps;
 	epsilon = fin_eps + norm_eps*(ini_eps - fin_eps);
+
+	assert(epsilon >= ini_eps);
+	assert(epsilon <= fin_eps);
 
 	printf("Reducing exploration rate -> norm_eps: %f, epsilon: %f \n", norm_eps, epsilon);
 }
@@ -434,6 +439,10 @@ int ql_egreedy_policy_steer(int s) {
 	ba = ql_best_action_steer(s);
 	ra = rand()%n_actions;
 	x = frand(0.0, 1.0);
+
+	assert(x >= 0.0);
+	assert(x <= 1.0);
+
 	//printf("ra: %d, x: %f, ba: %d\n", ra, x, ba);
 	if (x < epsilon)
 		return ra;
@@ -448,6 +457,10 @@ int ql_egreedy_policy_vel(int s) {
 	ba = ql_best_action_vel(s);
 	ra = rand()%n_actions;
 	x = frand(0.0, 1.0);
+
+	assert(x >= 0.0);
+	assert(x <= 1.0);
+	
 	//printf("ra: %d, x: %f, ba: %d\n", ra, x, ba);
 	if (x < epsilon)
 		return ra;
@@ -458,30 +471,40 @@ int ql_egreedy_policy_vel(int s) {
 struct Actions_ID ql_egreedy_policy(int s) {
 	int ra;
 	float x;
-	struct Actions_ID old_actions, new_actions;
+	struct Actions_ID best_actions, new_actions;
 	
 	// get best actions id for state s
-	old_actions = ql_best_action(s);
+	best_actions = ql_best_action(s);
 	// update steer action
 	ra = rand()%n_actions;
+	assert((ra <= n_actions) && (ra >= 0));
+
 	x = frand(0.0, 1.0);
-	//printf("ra: %d, x: %f, ba: %d\n", ra, x, old_actions.steer_act_id);
+	assert(x >= 0.0);
+	assert(x <= 1.0);
+	
+	//printf("ra: %d, x: %f, ba: %d\n", ra, x, best_actions.steer_act_id);
 	if (x < epsilon)
 		new_actions.steer_act_id = ra;
 	else 
-		new_actions.steer_act_id = old_actions.steer_act_id;
+		new_actions.steer_act_id = best_actions.steer_act_id;
 
 	if(train_only_steering)
 		return new_actions;
 
 	// update velocity action
 	ra = rand()%n_actions_vel;
+	assert((ra <= n_actions_vel) && (ra >= 0));
+
 	x = frand(0.0, 1.0);
-	//printf("ra: %d, x: %f, ba: %d\n", ra, x, old_actions.vel_act_id);
+	assert(x >= 0.0);
+	assert(x <= 1.0);
+	
+	//printf("ra: %d, x: %f, ba: %d\n", ra, x, best_actions.vel_act_id);
 	if (x < epsilon)
 		new_actions.vel_act_id = ra;
 	else 
-		new_actions.vel_act_id = old_actions.vel_act_id;
+		new_actions.vel_act_id = best_actions.vel_act_id;
 
 	return new_actions;
 }
@@ -507,11 +530,11 @@ float ql_updateQ_steer(int s, int a, float r, int snew) {
 	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
 	int flag = 0; // flag to discern between steer and velocity q-learn update
 	
-	if (r == RWD_CRASH)
-		q_target = r + gam*ql_maxQ(s, flag);
-	else
-		q_target = r + gam*ql_maxQ(snew, flag);
-	//q_target = r + gam*ql_maxQ(snew, flag);
+	//if (r == RWD_CRASH)
+	//	q_target = r + gam*ql_maxQ(s, flag);
+	//else
+	//	q_target = r + gam*ql_maxQ(snew, flag);
+	q_target = r + gam*ql_maxQ(snew, flag);
 
 	//q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q[s][a];
@@ -534,11 +557,11 @@ float ql_updateQ_vel(int s, int a, float r, int snew) {
 	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
 	int flag = 1;
 	
-	if (r == RWD_CRASH)
-		q_target = r + gam*ql_maxQ(s, flag);
-	else
-		q_target = r + gam*ql_maxQ(snew, flag);
-	//q_target = r + gam*ql_maxQ(snew, flag);
+	//if (r == RWD_CRASH)
+	//	q_target = r + gam*ql_maxQ(s, flag);
+	//else
+	//	q_target = r + gam*ql_maxQ(snew, flag);
+	q_target = r + gam*ql_maxQ(snew, flag);
 	
 
 	//q_target = r + gam*ql_maxQ(snew);
@@ -547,7 +570,6 @@ float ql_updateQ_vel(int s, int a, float r, int snew) {
 	//Q_vel[s][a] = (1 - alpha) * Q_vel[s][a] + alpha * (q_target);
 	Q_vel[s][a] = Q_vel[s][a] + alpha * (q_target - Q_vel[s][a]);
 	//printf("Q: %f, td_err: %f \n", Q_vel[s][a], td_err);
-
 
 	return fabs(td_err);
 }
