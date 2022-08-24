@@ -1533,7 +1533,7 @@ void init_qlearn_params() {
 	ql_set_discount_factor(0.95);
 	ql_set_expl_factor(0.4);
 	ql_set_expl_range(0.4, 0.1);
-	ql_set_expl_decay(0.95);
+	ql_set_expl_decay(0.99);
 }
 
 void save_episodes_stats_to_file() {
