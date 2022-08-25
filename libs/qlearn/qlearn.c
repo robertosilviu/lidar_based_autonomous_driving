@@ -271,10 +271,11 @@ void ql_reduce_expl() {
 	norm_eps = decay*norm_eps;
 	epsilon = fin_eps + norm_eps*(ini_eps - fin_eps);
 
-	assert(epsilon >= ini_eps);
-	assert(epsilon <= fin_eps);
-
 	printf("Reducing exploration rate -> norm_eps: %f, epsilon: %f \n", norm_eps, epsilon);
+	
+	assert(epsilon <= ini_eps);
+	assert(epsilon >= fin_eps);
+
 }
 
 float ql_maxQ(int s, int flag) {
