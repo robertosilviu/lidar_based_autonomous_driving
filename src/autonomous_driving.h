@@ -252,7 +252,7 @@ float action_to_acc(int action_a);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);
 float get_reward(struct Agent agent, int d_left, int d_front, int d_right);
 float learn_to_drive();
-float single_thread_learning();
+void single_thread_learning();
 
 void save_episodes_stats_to_file();
 void save_Q_matrix_to_file();

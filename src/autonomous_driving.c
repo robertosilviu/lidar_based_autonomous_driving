@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <math.h>
+#include <assert.h>
 
 #include "../libs/ptask/ptask.h"
 #include "../libs/tlib/tlib.h"
@@ -10,7 +11,7 @@
 
 int main() {
 	int ret, mode;
-	printf("Starting app...\n");
+	printf("\n*** Starting app\n");
 
 	init();
 	//printf("here app...\n");
@@ -534,7 +535,8 @@ void* learning_task(void* arg) {
 	pthread_mutex_unlock(&mux_sensors);
 	do {
 		crash_check();
-		// interrupt training after driving on whole track for 2 times
+		// interrupt training after driving on whole track
+		// for certain amount of meters
 		for(j = 0; j < MAX_AGENTS; j++) {
 			if (agents[j].distance > 1200)
 				agents[j].alive = 0;
@@ -543,10 +545,12 @@ void* learning_task(void* arg) {
 		alive_flag = 0;
 		// need to update agent when crash occured
 		//for(i = 0; i < MAX_AGENTS; i++) {
-		conv_delta += single_thread_learning();
+		single_thread_learning();
 		// push error from rl optimization to cbuf
 		// should have also the time of pushing
 		//push_to_cbuf(episode, progress);
+		index = episode-1;
+		statistics[index] = agents[0].ep_stats;
 		// reset dead agent
 		//pthread_mutex_lock(&mux_agent);
 		for(j = 0; j < MAX_AGENTS; j++) {
@@ -554,15 +558,9 @@ void* learning_task(void* arg) {
 				alive_flag = 1;
 			}
 		}
+
 		// no agent alive, start new episode
 		if(alive_flag == 0) {
-			// reset max TD_ERROR
-			conv_delta = 0;
-			// handle only first agent of now
-			// should be inserted in the for cycle
-			index = episode-1;
-			statistics[index] = agents[0].ep_stats;
-
 			episode++;
 			
 			//if(((episode%200) == 0) && (episode > 100))
@@ -816,7 +814,7 @@ void init_agent() {
 	int i;
 	int train_only_steering = ql_get_train_mode();
 	
-	printf("Initializing agent...\n");
+	printf("*** Initializing agent\n");
 
 	if (train_only_steering)
 		printf("Training mode is: only STEERING \n");
@@ -1211,7 +1209,7 @@ void write_debug() {
 	textout_ex(debug_bmp, font, debug, x, 100, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"alive: %d", agent.alive);
+	sprintf(debug,"epsilon: %f", ql_get_epsilon());
 	textout_ex(debug_bmp, font, debug, x, 110, white, -1);
 
 	memset(debug, 0, sizeof debug);
@@ -1219,7 +1217,7 @@ void write_debug() {
 	textout_ex(debug_bmp, font, debug, x, 120, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"epsilon: %f", ql_get_epsilon());
+	sprintf(debug,"alive: %d", agent.alive);
 	textout_ex(debug_bmp, font, debug, x, 130, white, -1);
 
 	memset(debug, 0, sizeof debug);
@@ -1522,6 +1520,7 @@ float learn_to_drive() {
 void init_qlearn_params() {
 	int n_states, n_actions_steer, n_actions_vel;
 
+	printf("*** Initializing epsilon-greedy params: \n");
 	n_states = MAX_STATES_LIDAR*MAX_STATES_LIDAR;
 	//n_actions = (MAX_THETA * 2) - 1;
 	n_actions_steer = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
@@ -1534,6 +1533,7 @@ void init_qlearn_params() {
 	ql_set_expl_factor(0.4);
 	ql_set_expl_range(0.4, 0.1);
 	ql_set_expl_decay(0.99);
+	printf("---------\n");
 }
 
 void save_episodes_stats_to_file() {
@@ -1810,20 +1810,18 @@ void read_Tr_matrix_from_file() {
 }
 
 // handles learning under the single thread mode
-float single_thread_learning() {
+void single_thread_learning() {
 	struct Actions_ID a[MAX_AGENTS];
 	int s[MAX_AGENTS], s_new[MAX_AGENTS];
-	float max_err, err;
+	float err;
 	float r[MAX_AGENTS];
-	int i, curr_s;
+	int i, act;
 	struct Agent agent;
 	struct Lidar car_sensors[3];
 	int d_l[MAX_AGENTS], d_f[MAX_AGENTS], d_r[MAX_AGENTS]; // lidar distances
-	int act;
 	float updated_distance;
 	int train_only_steering = ql_get_train_mode();
 
-	max_err = 0.0;
 	err = 0.0;
 	pthread_mutex_lock(&mux_agent);
 	for(i = 0; i < MAX_AGENTS; i++) {
@@ -1833,6 +1831,7 @@ float single_thread_learning() {
 			continue;
 
 		a[i] = ql_egreedy_policy(agent.state);
+		// backup last iteration delta steering
 		rwd_previous_delta = agent.action.delta;
 		agent.action.delta = action_to_steering(a[i].steer_act_id);
 		if (train_only_steering)
@@ -1875,27 +1874,21 @@ float single_thread_learning() {
 		agent.ep_stats.steps++;
 		agent.ep_stats.total_reward += r[i];
 		agent.ep_stats.total_td_error += err;
-		// Sarsa
-		//agent.a_id = a_new;
+
 		agents[i] = agent;
-		// update max TD error
-		// needs better handling of error
-		if (err > max_err)
-			max_err = err;
 	}
 	pthread_mutex_unlock(&mux_agent);
 	pthread_mutex_lock(&mux_cbuffer);
+	// BUF_LEN = number of actions
 	for(i = 0; i < BUF_LEN; i++) {
 		if (agents[0].alive == 0)
 			break;
-		curr_s = s_new[0]; // save to graph the action of first agent only
-		act = ql_get_Q(curr_s, i);
+		// save to graph the action of first agent only
+		act = ql_get_Q(agents[0].state, i);
 		push_to_cbuf(i, act, i);
 		//printf("s: %d, Q: %d\n", curr_s, act);
 	}
 	pthread_mutex_unlock(&mux_cbuffer);
-	// error handling is wrong !!  needs to be changed
-	return max_err;
 }
 // -------------- KOHONEN ------------------
 void init_kohonen_nn() {
