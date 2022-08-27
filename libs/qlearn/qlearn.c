@@ -315,41 +315,6 @@ float ql_maxQ(int s, int flag) {
 	return m;
 }
 
-/*
-float ql_maxQ(int s) {
-	int a;
-	float m;
-
-	m = Q[s][0];
-
-	for(a = 1; a < n_actions; a++) {
-		if (Q[s][a] > m) {
-			m = Q[s][a];
-			//printf("q: %d\n", Q[s][a]);
-		}
-			
-	}
-	//printf("m: %d\n", m);
-	return m;
-}
-*/
-float ql_maxQ_vel(int s) {
-	int a;
-	float m;
-
-	m = Q_vel[s][0];
-
-	for(a = 1; a < n_actions_vel; a++) {
-		if (Q_vel[s][a] > m) {
-			m = Q_vel[s][a];
-			//printf("q: %d\n", Q[s][a]);
-		}
-			
-	}
-	//printf("m: %d\n", m);
-	return m;
-}
-
 // TO-DO: add condition for inference mode
 struct Actions_ID ql_best_action(int s) {
 	int a, ba;
@@ -392,83 +357,6 @@ struct Actions_ID ql_best_action(int s) {
 	ql_act.vel_act_id = ba;
 
 	return ql_act;
-}
-
-int ql_best_action_steer(int s) {
-	int a, ba;
-	float m;
-
-	m = Q[s][0];
-	ba = 0;
-
-	for(a = 1; a < n_actions; a++) {
-		if (Q[s][a] > m) {
-			m = Q[s][a];
-			ba = a;
-		}
-	}
-	// when value is zero return casual action
-	if (Q[s][ba] == 0)
-		ba = rand()%n_actions;
-	
-	return ba;
-}
-
-int ql_best_action_vel(int s) {
-	int a, ba;
-	float m;
-
-	m = Q_vel[s][0];
-	ba = 0;
-
-	for(a = 1; a < n_actions_vel; a++) {
-		if (Q_vel[s][a] > m) {
-			m = Q_vel[s][a];
-			ba = a;
-		}
-	}
-	// when value is zero return casual action
-	if (Q_vel[s][ba] == 0)
-		ba = rand()%n_actions_vel;
-	
-	return ba;
-}
-
-// change to ql_egreedy_policy_steer
-int ql_egreedy_policy_steer(int s) {
-	int ra, ba;
-	float x;
-	
-	ba = ql_best_action_steer(s);
-	ra = rand()%n_actions;
-	x = frand(0.0, 1.0);
-
-	assert(x >= 0.0);
-	assert(x <= 1.0);
-
-	//printf("ra: %d, x: %f, ba: %d\n", ra, x, ba);
-	if (x < epsilon)
-		return ra;
-	else 
-		return ba;
-}
-
-int ql_egreedy_policy_vel(int s) {
-	int ra, ba;
-	float x;
-	
-	ba = ql_best_action_vel(s);
-	ra = rand()%n_actions;
-	x = frand(0.0, 1.0);
-
-	assert(x >= 0.0);
-	assert(x <= 1.0);
-	
-	//printf("ra: %d, x: %f, ba: %d\n", ra, x, ba);
-	if (x < epsilon)
-		return ra;
-	else 
-		return ba;
 }
 
 struct Actions_ID ql_egreedy_policy(int s) {
@@ -526,12 +414,8 @@ float ql_updateQ(int s, struct Actions_ID a, float r, int snew) {
 float ql_updateQ_steer(int s, int a, float r, int snew) {
 	float q_target;	// target Q value
 	float td_err;	// TD error
-	//float old_q;
-	//q_target = r + gam*ql_maxQ(snew);
-	//td_err = q_target - Q[s][a];
-	//Q[s][a] = Q[s][a] + alpha*td_err;
-	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
-	int flag = 0; // flag to discern between steer and velocity q-learn update
+	// flag to discern between steer and velocity q-learn update
+	int flag = 0; 
 	
 	//if (r == RWD_CRASH)
 	//	q_target = r + gam*ql_maxQ(s, flag);
@@ -553,11 +437,7 @@ float ql_updateQ_steer(int s, int a, float r, int snew) {
 float ql_updateQ_vel(int s, int a, float r, int snew) {
 	float q_target;	// target Q value
 	float td_err;	// TD error
-	//float old_q;
-	//q_target = r + gam*ql_maxQ(snew);
-	//td_err = q_target - Q[s][a];
-	//Q[s][a] = Q[s][a] + alpha*td_err;
-	//printf("r: %f, s: %d, s_new: %d, a: %d \n", r, s, snew, a);
+	// flag to choose max value from Q_vel 
 	int flag = 1;
 	
 	//if (r == RWD_CRASH)
@@ -565,7 +445,6 @@ float ql_updateQ_vel(int s, int a, float r, int snew) {
 	//else
 	//	q_target = r + gam*ql_maxQ(snew, flag);
 	q_target = r + gam*ql_maxQ(snew, flag);
-	
 
 	//q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q_vel[s][a];
@@ -618,8 +497,3 @@ float updateQ_sarsa(int s, int a, float r, int snew, int anew) {
 
 	return fabs(Q[s][a] - old_q);
 }
-/*
-float evaluate_convergence(float prev_errr, float curr_err) {
-	printf("to do\n");
-}
-*/

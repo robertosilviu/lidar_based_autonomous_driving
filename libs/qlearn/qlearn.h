@@ -68,16 +68,10 @@ int ql_get_train_mode();
 
 void ql_reduce_expl();
 float ql_maxQ(int s, int flag);
-//float ql_maxQ(int s);
-float ql_maxQ_vel(int s);
 
 struct Actions_ID ql_best_action(int s);
-int ql_best_action_steer(int s);
-int ql_best_action_vel(int s);
 
 struct Actions_ID ql_egreedy_policy(int s);
-int ql_egreedy_policy_steer(int s);
-int ql_egreedy_policy_vel(int s);
 
 float ql_updateQ(int s, struct Actions_ID a, float r, int snew);
 float ql_updateQ_steer(int s, int a, float r, int snew);
@@ -87,5 +81,4 @@ float ql_lambda_updateQ(int s, int a, float r, int snew);
 float updateQ_sarsa(int s, int a, float r, int snew, int anew);
 
 float frand(float xmin, float xmax);
-//float evaluate_convergence(float prev_errr, float curr_err);
 #endif

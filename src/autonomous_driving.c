@@ -5,7 +5,6 @@
 #include "../libs/ptask/ptask.h"
 #include "../libs/tlib/tlib.h"
 #include "../libs/qlearn/qlearn.h"
-#include "../libs/qlearn/kohonen.h"
 #include "autonomous_driving.h"
 
 
@@ -1385,12 +1384,12 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		if (train_only_steering)
 			return r;
 		// -------- acceleration ---------
-		if ((agent.action.a > 0) && (agent.car.v >= MAX_V_ALLOWED)) {
-			r = RWD_BAD_ACC;
-		}
-		else if ((agent.action.a <= 0) && (agent.car.v == 0)) {
-			r = RWD_BAD_ACC;
-		}
+		//if ((agent.action.a > 0) && (agent.car.v >= MAX_V_ALLOWED)) {
+		//	r = RWD_BAD_ACC;
+		//}
+		//else if ((agent.action.a <= 0) && (agent.car.v == 0)) {
+		//	r = RWD_BAD_ACC;
+		//}
 		//else if (agent.car.v > (MAX_V_ALLOWED+1.0)) {
 		//	r = RWD_BAD_ACC;
 		//}
