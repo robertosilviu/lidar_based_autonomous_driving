@@ -262,10 +262,6 @@ void read_Q_vel_matrix_from_file();
 void save_Tr_matrix_to_file();
 void read_Tr_matrix_from_file();
 void init_pool_poses();
-void init_kohonen_nn();
-void train_kohonen_live(float d_l, float d_r, float d_f);
-void read_kw_from_file();
-void save_kw_to_file();
 //-------------------------------- UTILS --------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, struct Car car);
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);

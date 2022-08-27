@@ -35,6 +35,8 @@ static float T_r[MAX_STATES][MAX_ACTIONS];
 float frand(float xmin, float xmax) {
 	float range;
 
+	assert(xmax >= xmin);
+	
 	range = (xmax - xmin);
 
 	return (xmin + range*(float)rand()/RAND_MAX);
