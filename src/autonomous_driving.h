@@ -238,7 +238,8 @@ void get_updated_lidars_distance(struct Car car, struct Lidar car_sensors[]);
 char interpreter();
 //-------------------------------- Reinforcement Learning --------------------
 
-void init_qlearn_params();
+void init_qlearn_training_mode();
+void init_qlearn_inference_mode();
 struct Car update_car_model(struct Agent agent);
 void crash_check();
 int is_car_offtrack(struct Car car);

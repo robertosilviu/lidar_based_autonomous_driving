@@ -76,7 +76,7 @@ void init() {
 	init_pool_poses();
 	// Q learning related
 	init_agent();
-	init_qlearn_params();
+	init_qlearn_training_mode();
 	// track window
 	init_scene();
 	refresh_sensors();
@@ -624,9 +624,9 @@ void* learning_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
-		show_rl_graph();
+		//show_rl_graph();
 		//show_Q_matrix();
-		//show_gui_interaction_instructions();
+		show_gui_interaction_instructions();
 
 		// command interpreter task
 		scan = interpreter();
@@ -706,7 +706,7 @@ char interpreter() {
 				//if (car.v > MAX_V)
 				//	car.v = MAX_V;
 				break;
-			case KEY_S:
+			case KEY_Q:
 				act.a -= (0.1 * G);
 				if (act.a < MIN_A)
 					act.a = MIN_A;
@@ -736,9 +736,11 @@ char interpreter() {
 				mode = ql_get_rl_mode();
 				if( mode == TRAINING) {
 					ql_set_rl_mode(INFERENCE);
+					init_qlearn_inference_mode();
 					printf("Changing rl mode: TRAINING -> INFERENCE \n");
 				}else if( mode == INFERENCE) {
 					ql_set_rl_mode(TRAINING);
+					init_qlearn_training_mode();
 					printf("Changing rl mode: INFERENCE -> TRAINING \n");
 				}else {
 					printf("ERROR: wrong mode! Should be %d or %d\n", TRAINING, INFERENCE);
@@ -752,6 +754,17 @@ char interpreter() {
 				read_Q_matrix_from_file();
 				read_Q_vel_matrix_from_file();
 				read_Tr_matrix_from_file();
+				pthread_mutex_unlock(&mux_q_matrix);
+				break;
+			case KEY_S:
+				printf("Saving Q matrix to file %s\n", Q_MAT_FILE_NAME);
+				pthread_mutex_lock(&mux_q_matrix);
+				// Q Learning
+				save_Q_matrix_to_file();
+				save_Q_vel_matrix_to_file();
+				save_Tr_matrix_to_file();
+				// save episodes statistics on file for further analysis 
+				save_episodes_stats_to_file();
 				pthread_mutex_unlock(&mux_q_matrix);
 				break;
 			case KEY_D:
@@ -974,7 +987,7 @@ void show_gui_interaction_instructions() {
 	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 20, white, -1);
 
 	memset(buff, 0, sizeof buff);
-	sprintf(buff,"Key S ");
+	sprintf(buff,"Key Q ");
 	textout_ex(instructions_bmp, font, buff, x, y + 40, yellow, -1);
 	memset(buff, 0, sizeof buff);
 	sprintf(buff,"decrease acceleration input");
@@ -1002,13 +1015,20 @@ void show_gui_interaction_instructions() {
 	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 100, white, -1);
 
 	memset(buff, 0, sizeof buff);
-	sprintf(buff,"Key D ");
+	sprintf(buff,"Key S ");
 	textout_ex(instructions_bmp, font, buff, x, y + 120, yellow, -1);
 	memset(buff, 0, sizeof buff);
-	sprintf(buff,"enable/disable lidar beams drawing");
+	sprintf(buff,"save Q matrix to file");
 	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 120, white, -1);
 
-	rect(instructions_bmp, 5, 5, x + 400, y + 140, blue);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key D ");
+	textout_ex(instructions_bmp, font, buff, x, y + 140, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"enable/disable lidar beams drawing");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 140, white, -1);
+
+	rect(instructions_bmp, 5, 5, x + 400, y + 160, blue);
 	blit(instructions_bmp, screen, 0, 0, 10, 10, instructions_bmp->w, instructions_bmp->h);
 }
 
@@ -1645,7 +1665,7 @@ float learn_to_drive() {
 }
 
 // initialize hyper parameters used by the Q-Learning algorithm
-void init_qlearn_params() {
+void init_qlearn_training_mode() {
 	int n_states, n_actions_steer, n_actions_vel;
 
 	printf("*** Initializing epsilon-greedy params: \n");
@@ -1660,6 +1680,25 @@ void init_qlearn_params() {
 	ql_set_discount_factor(0.95);
 	ql_set_expl_factor(0.4);
 	ql_set_expl_range(0.4, 0.1);
+	ql_set_expl_decay(0.99);
+	printf("---------\n");
+}
+
+void init_qlearn_inference_mode() {
+	int n_states, n_actions_steer, n_actions_vel;
+
+	printf("*** Initializing epsilon-greedy params: \n");
+	n_states = MAX_STATES_LIDAR*MAX_STATES_LIDAR;
+	//n_actions = (MAX_THETA * 2) - 1;
+	n_actions_steer = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
+	n_actions_vel = (int)((MAX_A/G * 2)/ACC_STEP) + 1;
+	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
+	ql_init(n_states, n_actions_steer, n_actions_vel);
+	// modify specific params by calling related function
+	ql_set_learning_rate(0.6);
+	ql_set_discount_factor(0.95);
+	ql_set_expl_factor(0.0);
+	ql_set_expl_range(0.0, 0.0);
 	ql_set_expl_decay(0.99);
 	printf("---------\n");
 }
@@ -1822,7 +1861,6 @@ void read_Q_matrix_from_file() {
 		}
 	}
 
-	printf(" previous Q val: %f \n", ql_get_Q(27,0));
 	size = 1024;
 	while (fgets(q_buff, size, fp) != NULL) {
 		ptr = q_buff;
@@ -1834,7 +1872,6 @@ void read_Q_matrix_from_file() {
 		}
 		i++;
 	}
-	printf(" new Q val: %f \n", ql_get_Q(27,0));
 	printf("Q matrix restored!\n");
 }
 
@@ -1873,7 +1910,7 @@ void read_Q_vel_matrix_from_file() {
 		}
 	}
 
-	printf(" previous Q_vel val: %f \n", ql_get_Q_vel(27,0));
+	//printf(" previous Q_vel val: %f \n", ql_get_Q_vel(27,0));
 	size = 1024;
 	while (fgets(q_buff, size, fp) != NULL) {
 		ptr = q_buff;
@@ -1885,7 +1922,7 @@ void read_Q_vel_matrix_from_file() {
 		}
 		i++;
 	}
-	printf(" new Q_vel val: %f \n", ql_get_Q_vel(27,0));
+	//printf(" new Q_vel val: %f \n", ql_get_Q_vel(27,0));
 	printf("Q_vel matrix restored!\n");
 }
 
