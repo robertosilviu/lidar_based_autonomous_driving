@@ -164,7 +164,7 @@ struct cbuf {
 	int head;
 	int tail;
 	int x[BUF_LEN];
-	int y[BUF_LEN];
+	float y[BUF_LEN];
 };
 
 /*-----------------------------------------------------------------------------*/
@@ -228,6 +228,8 @@ void update_scene();
 void reset_scene();
 void show_dmiss();
 void show_rl_graph();
+void show_Q_matrix();
+void show_gui_interaction_instructions();
 //------------------------------- Tasks --------------------------------------
 void* comms_task(void* arg);
 void* display_task(void* arg);
