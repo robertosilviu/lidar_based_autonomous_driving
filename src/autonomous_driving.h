@@ -160,13 +160,6 @@ struct Agent {
 	// da aggiungere il reward
 };
 
-struct cbuf {
-	int head;
-	int tail;
-	int x[BUF_LEN];
-	float y[BUF_LEN];
-};
-
 /*-----------------------------------------------------------------------------*/
 /*								GLOBAL VARIABLES							   */
 /*-----------------------------------------------------------------------------*/
@@ -189,8 +182,7 @@ float rwd_previous_delta = 0.0;
 struct Lidar sensors[MAX_AGENTS][3];
 int disable_sensors = 0;
 
-struct cbuf graph_buff;
-int graph_index = 0;
+int graph_index = 0; // check if i should delete it
 
 float max_reward = RWD_CRASH;
 float conv_delta = 0.0;
@@ -272,6 +264,4 @@ float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
 char get_scancode();
 fixed deg_to_fixed(float deg);
-void push_to_cbuf(int x, int y, int id);
-int is_cbuff_empty();
 void write_debug();

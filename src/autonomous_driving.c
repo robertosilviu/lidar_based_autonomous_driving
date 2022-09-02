@@ -50,18 +50,10 @@ void init() {
 	// create 3 semaphores with Priority inheritance protocol
 	pthread_mutex_init(&mux_agent, &matt);
 	pthread_mutex_init(&mux_sensors, &matt);
-	pthread_mutex_init(&mux_cbuffer, &matt);
 	pthread_mutex_init(&mux_q_matrix, &matt);
 
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
-	// initialzie circular buffer
-	graph_buff.head = -1;
-	graph_buff.tail = -1;
-	for(i = 0; i < BUF_LEN; i++) {
-		graph_buff.x[i] = 0;
-		graph_buff.y[i] = 0.0;
-	}
 	// organize app windows
 	// graph window
 	w = WIN_X;
@@ -331,25 +323,6 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	return 0;
 }
 
-// handler for circular buffer
-int is_cbuff_empty() {
-	if (graph_buff.tail == graph_buff.head)
-		return 1;
-	return 0;
-}
-
-// add elements to the buffer
-void push_to_cbuf(int x, int y, int id) {
-
-	//pthread_mutex_lock(&mux_cbuffer);
-	
-	// save the data
-	graph_buff.x[id] = x;
-	graph_buff.y[id] = y;
-	//printf("adding: %d, %d \n", x, y);
-	//pthread_mutex_unlock(&mux_cbuffer);
-}
-
 // display on screen a bitmap with the values of Q Matrix 
 // for each action that the agent can choose at each timestamp
 // the values are scaled based on the greatest absolute value among all actions
@@ -398,7 +371,6 @@ void show_rl_graph() {
 	for(i = 0; i < BUF_LEN; i++) {
 		act_values[i] = ql_get_Q(agent.state, i);
 	}
-	//pthread_mutex_lock(&mux_cbuffer);
 	// get max elem of buffer
 	for(i = 0; i < BUF_LEN; i++) {
 		if(fabs(act_values[i]) > g_h)
@@ -439,7 +411,6 @@ void show_rl_graph() {
 		//line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
 	}
 
-	//pthread_mutex_unlock(&mux_cbuffer);
 	blit(graph_bmp, screen, 0, 0, 10, 20, graph_bmp->w, graph_bmp->h);
 }
 
@@ -496,9 +467,6 @@ void* agent_task(void* arg) {
 			else if ( mode == INFERENCE)
 				printf("Should do inference here\n");
 			
-			// push error from rl optimization to cbuf
-			// should have also the time of pushing
-			//push_to_cbuf(episode, progress);
 			// reset dead agent
 			pthread_mutex_lock(&mux_agent);
 			for(j = 0; j < MAX_AGENTS; j++) {
@@ -582,9 +550,7 @@ void* learning_task(void* arg) {
 		// need to update agent when crash occured
 		//for(i = 0; i < MAX_AGENTS; i++) {
 		single_thread_learning();
-		// push error from rl optimization to cbuf
-		// should have also the time of pushing
-		//push_to_cbuf(episode, progress);
+	
 		index = episode-1;
 		statistics[index] = agents[0].ep_stats;
 		// reset dead agent
@@ -1674,14 +1640,6 @@ float learn_to_drive() {
 	}
 	pthread_mutex_unlock(&mux_agent);
 
-	pthread_mutex_lock(&mux_cbuffer);
-	for(i = 0; i < BUF_LEN; i++) {
-		curr_s = s_new[0]; // save to graph the action of first agent only
-		act = ql_get_Q(curr_s, i);
-		push_to_cbuf(i, act, i);
-		//printf("s: %d, Q: %d\n", curr_s, act);
-	}
-	pthread_mutex_unlock(&mux_cbuffer);
 	// error handling is wrong !!  needs to be changed
 	return max_err;
 }
@@ -2049,16 +2007,5 @@ void single_thread_learning() {
 		agents[i] = agent;
 	}
 	pthread_mutex_unlock(&mux_agent);
-	pthread_mutex_lock(&mux_cbuffer);
-	// BUF_LEN = number of actions
-	for(i = 0; i < BUF_LEN; i++) {
-		if (agents[0].alive == 0)
-			break;
-		// save to graph the action of first agent only
-		act = ql_get_Q(agents[0].state, i);
-		push_to_cbuf(i, act, i);
-		//printf("s: %d, Q: %d\n", curr_s, act);
-	}
-	pthread_mutex_unlock(&mux_cbuffer);
 }
 
