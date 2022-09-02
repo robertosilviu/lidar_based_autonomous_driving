@@ -176,6 +176,7 @@ BITMAP *scene_bmp = NULL;
 BITMAP *debug_bmp = NULL;
 BITMAP *deadline_bmp = NULL;
 BITMAP *graph_bmp = NULL;
+BITMAP *instructions_bmp = NULL;
 
 float MAX_V_ALLOWED = 5.0;
 struct Agent agent; // to be removed

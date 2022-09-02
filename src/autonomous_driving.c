@@ -67,6 +67,7 @@ void init() {
 	w = WIN_X;
 	h = WIN_Y - SIM_Y;
 	graph_bmp = create_bitmap(w, h);
+	instructions_bmp = create_bitmap(w, h);
 	// deadline window
 	w = WIN_X - SIM_X;
 	h = DMISS_H;
@@ -427,7 +428,8 @@ void* display_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
-		show_rl_graph();
+		//show_rl_graph();
+		show_gui_interaction_instructions();
 
 		deadline_miss(GRAPHICS_ID);
 		wait_for_activation(i);
@@ -624,7 +626,8 @@ void* learning_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
-		show_rl_graph();
+		//show_rl_graph();
+		show_gui_interaction_instructions();
 		// command interpreter task
 		scan = interpreter();
 		if (scan == KEY_ESC)
@@ -948,42 +951,65 @@ void show_gui_interaction_instructions() {
 	char buff[100];
 	int x, y;
 	int white, yellow, blue;
+	int x_offset;
 
 	white = makecol(255,255,255);
 	blue = makecol(100,149,237);
 	yellow = makecol(255,255,0);
 
-	x = 0;
-	y = 220;
+	x = 10;
+	y = 10;
+	x_offset = 50;
 
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"Keyboard shortcuts");
-	textout_ex(debug_bmp, font, debug, x, y, blue, -1);
+	clear_to_color(instructions_bmp, 0);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Keyboard shortcuts");
+	textout_ex(instructions_bmp, font, buff, x, y, blue, -1);
 
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"Key A: increment acceleration input");
-	textout_ex(debug_bmp, font, debug, x, y + 20, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key A ");
+	textout_ex(instructions_bmp, font, buff, x, y + 20, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"increase acceleration input");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 20, white, -1);
 
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"Key S: decrease acceleration input");
-	textout_ex(debug_bmp, font, debug, x, y + 40, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key S ");
+	textout_ex(instructions_bmp, font, buff, x, y + 40, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"decrease acceleration input");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 40, white, -1);
 
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"ARROW UP/DOWN: change car's max velocity allowed");
-	textout_ex(debug_bmp, font, debug, x, y + 60, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"ARROW UP/DOWN" );
+	textout_ex(instructions_bmp, font, buff, x, y + 60, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"change car's max velocity allowed");
+	textout_ex(instructions_bmp, font, buff, x + 115, y + 60, white, -1);
 
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"Key M: switch between INFERENCE and TRAINING mode");
-	textout_ex(debug_bmp, font, debug, x, y + 80, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key M ");
+	textout_ex(instructions_bmp, font, buff, x, y + 80, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"switch between INFERENCE and TRAINING mode");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 80, white, -1);
 
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"Key L: load Q matrix from file");
-	textout_ex(debug_bmp, font, debug, x, y + 100, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key L ");
+	textout_ex(instructions_bmp, font, buff, x, y + 100, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"load Q matrix from file");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 100, white, -1);
 
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"Key D: enable/disable lidar beams drawing");
-	textout_ex(debug_bmp, font, debug, x, y + 120, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key D ");
+	textout_ex(instructions_bmp, font, buff, x, y + 120, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"enable/disable lidar beams drawing");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 120, white, -1);
 
+	rect(instructions_bmp, 5, 5, x + 400, y + 140, blue);
+	blit(instructions_bmp, screen, 0, 0, 10, 10, instructions_bmp->w, instructions_bmp->h);
 }
 
 // visualize current state "S" and Q values of each action on state "S" 
@@ -1360,7 +1386,7 @@ void write_debug() {
 
 	//show_Q_matrix();
 	show_gui_interaction_instructions();
-	
+
 	x = SIM_X;
 	y = (WIN_Y - SIM_Y + 50);
 	blit(debug_bmp, screen, 0, 0, x, y, debug_bmp->w, debug_bmp->h);
