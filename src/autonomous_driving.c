@@ -65,9 +65,13 @@ void init() {
 	// organize app windows
 	// graph window
 	w = WIN_X;
-	h = WIN_Y - SIM_Y;
-	graph_bmp = create_bitmap(w, h);
+	h = (WIN_Y - SIM_Y);
 	instructions_bmp = create_bitmap(w, h);
+
+	w = WIN_X;
+	h = (WIN_Y - SIM_Y);
+	graph_bmp = create_bitmap(w, h);
+	// keyboard instructions window
 	// deadline window
 	w = WIN_X - SIM_X;
 	h = DMISS_H;
@@ -350,43 +354,67 @@ void push_to_cbuf(int x, int y, int id) {
 // for each action that the agent can choose at each timestamp
 // the values are scaled based on the greatest absolute value among all actions
 void show_rl_graph() {
-	int px_h, px_w, white, orange;
-	int shift_y_axis = 50;
-	int shift_x_axis = 300;
-	int x_offset = 50;
+	int px_h, px_w;
+	int white, orange, blue, green;
+	int shift_y_axis = 100;
+	int shift_x_axis = 100;
+	// move graph 10px from left margin
+	int x_offset = 10;
+	// circle radius
 	int r = 3;
+	struct Agent agent;
+	struct Actions_ID best_act, agent_act;
+	float act_values[BUF_LEN];
+
 	struct ViewPoint p1;
 	int i, index;	// used for for cycle
 	float scale_y, scale_x;
-	int g_h;
+	// max value from Q matrix 
+	float g_h;
 	char debug[LEN];
 	// it needs a mutex for buffer access
+	// area where points are being drawn
 	px_h = graph_bmp->h - shift_y_axis;
 	px_w = graph_bmp->w - shift_x_axis - x_offset;
 
 	white = makecol(255,255,255);
 	orange = makecol(255,99,71);
+	green = makecol(0,255,0);
+	blue = makecol(100,149,237);
+
 	clear_to_color(graph_bmp, 0);
 	// draw axes
 	line(graph_bmp, x_offset, px_h/2, px_w, px_h/2, white);	// x
-	line(graph_bmp, x_offset, px_h, x_offset, 0, white);			// y
+	line(graph_bmp, x_offset, px_h, x_offset, 0, white);	// y
 
-	pthread_mutex_lock(&mux_cbuffer);
+	pthread_mutex_lock(&mux_agent);
+	agent = agents[0];
+	pthread_mutex_unlock(&mux_agent);
+
+	best_act = ql_best_action(agent.state);
+	// i should use buffer for Q matrix access
+	assert(BUF_LEN == ql_get_nactions());
+	// save actions row from Q matrix on state s
+	for(i = 0; i < BUF_LEN; i++) {
+		act_values[i] = ql_get_Q(agent.state, i);
+	}
+	//pthread_mutex_lock(&mux_cbuffer);
 	// get max elem of buffer
 	for(i = 0; i < BUF_LEN; i++) {
-		if(abs(graph_buff.y[i]) > g_h)
-			g_h = abs(graph_buff.y[i]);
+		if(fabs(act_values[i]) > g_h)
+			g_h = fabs(act_values[i]);
 	}
 
 	// find scale based on max value stored in buffer
 	scale_y = (float)g_h/(px_h/2);
 	//printf("scale_y: %f, g_h: %d\n", scale_y, g_h);
-	scale_x = px_w/(BUF_LEN+1); // amount of pixel for 1 unit of buffer
+	// amount of pixel for 1 unit of buffer
+	scale_x = px_w/(BUF_LEN+1); 
 
 	//i = 1;
 	for(i = 0; i < BUF_LEN; i++) {
 		index = i;
-		p1.y = px_h/2 - floor(graph_buff.y[index]/scale_y);
+		p1.y = px_h/2 - floor(act_values[index]/scale_y);
 		//memset(debug, 0, sizeof debug);
 		//sprintf(debug,"%d", graph_buff.y[index]);
 		//textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
@@ -399,16 +427,20 @@ void show_rl_graph() {
 
 		memset(debug, 0, sizeof debug);
 		//sprintf(debug,"ep: %d", graph_buff.x[index]);
-		sprintf(debug,"%.2f", graph_buff.y[index]);
+		sprintf(debug,"%.2f", act_values[index]);
 		textout_ex(graph_bmp, font, debug, p1.x, px_h+25, white, -1);
-		
-		circlefill(graph_bmp, p1.x, p1.y, r, orange);
+		if(index == best_act.steer_act_id)
+			circlefill(graph_bmp, p1.x, p1.y, r, green);
+		else if (index == agent.a_id.steer_act_id)
+			circlefill(graph_bmp, p1.x, p1.y, r, blue);
+		else
+			circlefill(graph_bmp, p1.x, p1.y, r, orange);
 		line(graph_bmp, p1.x, px_h, p1.x, px_h-8, white);
 		//line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
 	}
 
-	pthread_mutex_unlock(&mux_cbuffer);
-	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
+	//pthread_mutex_unlock(&mux_cbuffer);
+	blit(graph_bmp, screen, 0, 0, 10, 20, graph_bmp->w, graph_bmp->h);
 }
 
 // handles the display thread
@@ -429,7 +461,7 @@ void* display_task(void* arg) {
 		write_debug();
 		show_dmiss();
 		//show_rl_graph();
-		show_gui_interaction_instructions();
+		//show_gui_interaction_instructions();
 
 		deadline_miss(GRAPHICS_ID);
 		wait_for_activation(i);
@@ -626,8 +658,10 @@ void* learning_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
-		//show_rl_graph();
-		show_gui_interaction_instructions();
+		show_rl_graph();
+		//show_Q_matrix();
+		//show_gui_interaction_instructions();
+
 		// command interpreter task
 		scan = interpreter();
 		if (scan == KEY_ESC)
@@ -1023,11 +1057,12 @@ void show_Q_matrix() {
 	struct Actions_ID best_act, agent_act;
 	char debug[DEBUG_SIZE];
 	char action_buff[12];
-	int white, green, yellow;
+	int white, green, yellow, blue;
 
 	white = makecol(255,255,255);
 	green = makecol(0,255,0);
 	yellow = makecol(255,255,0);
+	blue = makecol(100,149,237);
 
 	// find number of actions
 	N_ACTIONS_STEER = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
@@ -1037,7 +1072,7 @@ void show_Q_matrix() {
 	assert((N_ACTIONS_VEL * MAX_FLOAT_SIZE) < (DEBUG_SIZE - 10));
 	// (x,y) where start drawing 
 	x = 0;
-	y = 200;
+	y = instructions_bmp->h - 50;
 
 	// get agent related info
 	pthread_mutex_lock(&mux_agent);
@@ -1047,35 +1082,34 @@ void show_Q_matrix() {
 	// get Q_learn data
 	best_act = ql_best_action(agent.state);
 
+	clear_to_color(graph_bmp, 0);
 	// write data on GUI
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"s: %d", agent.state);
-	textout_ex(debug_bmp, font, debug, x, (y + 10), white, -1);
+	sprintf(debug,"state: %d", agent.state);
+	textout_ex(graph_bmp, font, debug, x, (y + 10), white, -1);
 
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"best IDs: steer = %d, vel = %d", best_act.steer_act_id, best_act.vel_act_id);
-	textout_ex(debug_bmp, font, debug, x, (y + 20), green, -1);
+	textout_ex(graph_bmp, font, debug, x, (y + 20), green, -1);
 
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"used IDs: steer = %d, vel = %d", agent.a_id.steer_act_id, agent.a_id.vel_act_id);
-	textout_ex(debug_bmp, font, debug, x, (y + 30), yellow, -1);
+	textout_ex(graph_bmp, font, debug, x, (y + 30), blue, -1);
 
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"Q[s] actions row: ");
-	textout_ex(debug_bmp, font, debug, x, (y + 40), white, -1);
+	textout_ex(graph_bmp, font, debug, x, (y + 40), white, -1);
+	memset(debug, 0, sizeof debug);
 	for(i = 0; i < N_ACTIONS_STEER; i++) {
 		action_val = ql_get_Q(agent.state, i);
-		memset(debug, 0, sizeof debug);
 		memset(action_buff, 0, sizeof action_buff);
 		sprintf(action_buff, "%.2f | ", action_val);
 
 		strcat(debug, action_buff);
 	}
-	textout_ex(debug_bmp, font, debug, x, (y + 50), white, -1);
+	textout_ex(graph_bmp, font, debug, x, (y + 50), white, -1);
 
-
-
-
+	blit(graph_bmp, instructions_bmp, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
 }
 
 // update the distance measured by lidars at each timestamp
@@ -1383,9 +1417,6 @@ void write_debug() {
 	sprintf(debug,"ep. reward: %.3f", statistics[index].total_reward);
 	textout_ex(debug_bmp, font, debug, x, 200, white, -1);
 	//pthread_mutex_unlock(&mux_agent);
-
-	//show_Q_matrix();
-	show_gui_interaction_instructions();
 
 	x = SIM_X;
 	y = (WIN_Y - SIM_Y + 50);
