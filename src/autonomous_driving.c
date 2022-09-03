@@ -50,23 +50,20 @@ void init() {
 	// create 3 semaphores with Priority inheritance protocol
 	pthread_mutex_init(&mux_agent, &matt);
 	pthread_mutex_init(&mux_sensors, &matt);
-	pthread_mutex_init(&mux_cbuffer, &matt);
 	pthread_mutex_init(&mux_q_matrix, &matt);
 
 	pthread_mutexattr_destroy(&matt); 	//destroy attributes
 
-	// initialzie circular buffer
-	graph_buff.head = -1;
-	graph_buff.tail = -1;
-	for(i = 0; i < BUF_LEN; i++) {
-		graph_buff.x[i] = 0;
-		graph_buff.y[i] = 0.0;
-	}
 	// organize app windows
 	// graph window
 	w = WIN_X;
-	h = WIN_Y - SIM_Y;
+	h = (WIN_Y - SIM_Y);
+	instructions_bmp = create_bitmap(w, h);
+
+	w = WIN_X;
+	h = (WIN_Y - SIM_Y);
 	graph_bmp = create_bitmap(w, h);
+	// keyboard instructions window
 	// deadline window
 	w = WIN_X - SIM_X;
 	h = DMISS_H;
@@ -79,7 +76,7 @@ void init() {
 	init_pool_poses();
 	// Q learning related
 	init_agent();
-	init_qlearn_params();
+	init_qlearn_training_mode();
 	// track window
 	init_scene();
 	refresh_sensors();
@@ -326,66 +323,70 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 	return 0;
 }
 
-// handler for circular buffer
-int is_cbuff_empty() {
-	if (graph_buff.tail == graph_buff.head)
-		return 1;
-	return 0;
-}
-
-// add elements to the buffer
-void push_to_cbuf(int x, int y, int id) {
-
-	//pthread_mutex_lock(&mux_cbuffer);
-	
-	// save the data
-	graph_buff.x[id] = x;
-	graph_buff.y[id] = y;
-	//printf("adding: %d, %d \n", x, y);
-	//pthread_mutex_unlock(&mux_cbuffer);
-}
-
 // display on screen a bitmap with the values of Q Matrix 
 // for each action that the agent can choose at each timestamp
 // the values are scaled based on the greatest absolute value among all actions
 void show_rl_graph() {
-	int px_h, px_w, white, orange;
-	int shift_y_axis = 50;
-	int shift_x_axis = 300;
-	int x_offset = 50;
+	int px_h, px_w;
+	int white, orange, blue, green;
+	int shift_y_axis = 100;
+	int shift_x_axis = 100;
+	// move graph 10px from left margin
+	int x_offset = 10;
+	// circle radius
 	int r = 3;
+	struct Agent agent;
+	struct Actions_ID best_act, agent_act;
+	float act_values[BUF_LEN];
+
 	struct ViewPoint p1;
 	int i, index;	// used for for cycle
 	float scale_y, scale_x;
-	int g_h;
+	// max value from Q matrix 
+	float g_h;
 	char debug[LEN];
 	// it needs a mutex for buffer access
+	// area where points are being drawn
 	px_h = graph_bmp->h - shift_y_axis;
 	px_w = graph_bmp->w - shift_x_axis - x_offset;
 
 	white = makecol(255,255,255);
 	orange = makecol(255,99,71);
+	green = makecol(0,255,0);
+	blue = makecol(100,149,237);
+
 	clear_to_color(graph_bmp, 0);
 	// draw axes
 	line(graph_bmp, x_offset, px_h/2, px_w, px_h/2, white);	// x
-	line(graph_bmp, x_offset, px_h, x_offset, 0, white);			// y
+	line(graph_bmp, x_offset, px_h, x_offset, 0, white);	// y
 
-	pthread_mutex_lock(&mux_cbuffer);
+	pthread_mutex_lock(&mux_agent);
+	agent = agents[0];
+	pthread_mutex_unlock(&mux_agent);
+
+	best_act = ql_best_action(agent.state);
+	// i should use buffer for Q matrix access
+	assert(BUF_LEN == ql_get_nactions());
+	// save actions row from Q matrix on state s
+	for(i = 0; i < BUF_LEN; i++) {
+		act_values[i] = ql_get_Q(agent.state, i);
+	}
 	// get max elem of buffer
 	for(i = 0; i < BUF_LEN; i++) {
-		if(abs(graph_buff.y[i]) > g_h)
-			g_h = abs(graph_buff.y[i]);
+		if(fabs(act_values[i]) > g_h)
+			g_h = fabs(act_values[i]);
 	}
 
 	// find scale based on max value stored in buffer
 	scale_y = (float)g_h/(px_h/2);
 	//printf("scale_y: %f, g_h: %d\n", scale_y, g_h);
-	scale_x = px_w/(BUF_LEN+1); // amount of pixel for 1 unit of buffer
+	// amount of pixel for 1 unit of buffer
+	scale_x = px_w/(BUF_LEN+1); 
 
 	//i = 1;
 	for(i = 0; i < BUF_LEN; i++) {
 		index = i;
-		p1.y = px_h/2 - floor(graph_buff.y[index]/scale_y);
+		p1.y = px_h/2 - floor(act_values[index]/scale_y);
 		//memset(debug, 0, sizeof debug);
 		//sprintf(debug,"%d", graph_buff.y[index]);
 		//textout_ex(graph_bmp, font, debug, 0, p1.y, white, -1);
@@ -395,14 +396,22 @@ void show_rl_graph() {
 		//sprintf(debug,"ep: %d", graph_buff.x[index]);
 		sprintf(debug,"%d", (i*ACTIONS_STEP) - MAX_THETA);
 		textout_ex(graph_bmp, font, debug, p1.x, px_h+5, white, -1);
-		
-		circlefill(graph_bmp, p1.x, p1.y, r, orange);
-		line(graph_bmp, p1.x, px_h, p1.x, px_h -8, white);
+
+		memset(debug, 0, sizeof debug);
+		//sprintf(debug,"ep: %d", graph_buff.x[index]);
+		sprintf(debug,"%.2f", act_values[index]);
+		textout_ex(graph_bmp, font, debug, p1.x, px_h+25, white, -1);
+		if(index == best_act.steer_act_id)
+			circlefill(graph_bmp, p1.x, p1.y, r, green);
+		else if (index == agent.a_id.steer_act_id)
+			circlefill(graph_bmp, p1.x, p1.y, r, blue);
+		else
+			circlefill(graph_bmp, p1.x, p1.y, r, orange);
+		line(graph_bmp, p1.x, px_h, p1.x, px_h-8, white);
 		//line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
 	}
 
-	pthread_mutex_unlock(&mux_cbuffer);
-	blit(graph_bmp, screen, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
+	blit(graph_bmp, screen, 0, 0, 10, 20, graph_bmp->w, graph_bmp->h);
 }
 
 // handles the display thread
@@ -422,7 +431,8 @@ void* display_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
-		show_rl_graph();
+		//show_rl_graph();
+		//show_gui_interaction_instructions();
 
 		deadline_miss(GRAPHICS_ID);
 		wait_for_activation(i);
@@ -457,9 +467,6 @@ void* agent_task(void* arg) {
 			else if ( mode == INFERENCE)
 				printf("Should do inference here\n");
 			
-			// push error from rl optimization to cbuf
-			// should have also the time of pushing
-			//push_to_cbuf(episode, progress);
 			// reset dead agent
 			pthread_mutex_lock(&mux_agent);
 			for(j = 0; j < MAX_AGENTS; j++) {
@@ -543,9 +550,7 @@ void* learning_task(void* arg) {
 		// need to update agent when crash occured
 		//for(i = 0; i < MAX_AGENTS; i++) {
 		single_thread_learning();
-		// push error from rl optimization to cbuf
-		// should have also the time of pushing
-		//push_to_cbuf(episode, progress);
+	
 		index = episode-1;
 		statistics[index] = agents[0].ep_stats;
 		// reset dead agent
@@ -619,7 +624,10 @@ void* learning_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
-		show_rl_graph();
+		//show_rl_graph();
+		//show_Q_matrix();
+		show_gui_interaction_instructions();
+
 		// command interpreter task
 		scan = interpreter();
 		if (scan == KEY_ESC)
@@ -698,7 +706,7 @@ char interpreter() {
 				//if (car.v > MAX_V)
 				//	car.v = MAX_V;
 				break;
-			case KEY_S:
+			case KEY_Q:
 				act.a -= (0.1 * G);
 				if (act.a < MIN_A)
 					act.a = MIN_A;
@@ -728,9 +736,11 @@ char interpreter() {
 				mode = ql_get_rl_mode();
 				if( mode == TRAINING) {
 					ql_set_rl_mode(INFERENCE);
+					init_qlearn_inference_mode();
 					printf("Changing rl mode: TRAINING -> INFERENCE \n");
 				}else if( mode == INFERENCE) {
 					ql_set_rl_mode(TRAINING);
+					init_qlearn_training_mode();
 					printf("Changing rl mode: INFERENCE -> TRAINING \n");
 				}else {
 					printf("ERROR: wrong mode! Should be %d or %d\n", TRAINING, INFERENCE);
@@ -744,6 +754,17 @@ char interpreter() {
 				read_Q_matrix_from_file();
 				read_Q_vel_matrix_from_file();
 				read_Tr_matrix_from_file();
+				pthread_mutex_unlock(&mux_q_matrix);
+				break;
+			case KEY_S:
+				printf("Saving Q matrix to file %s\n", Q_MAT_FILE_NAME);
+				pthread_mutex_lock(&mux_q_matrix);
+				// Q Learning
+				save_Q_matrix_to_file();
+				save_Q_vel_matrix_to_file();
+				save_Tr_matrix_to_file();
+				// save episodes statistics on file for further analysis 
+				save_episodes_stats_to_file();
 				pthread_mutex_unlock(&mux_q_matrix);
 				break;
 			case KEY_D:
@@ -937,6 +958,144 @@ void show_dmiss() {
 	x = SIM_X;
 	y = (WIN_Y - DMISS_H);
 	blit(deadline_bmp, screen, 0, 0, x, y, deadline_bmp->w, deadline_bmp->h);
+}
+
+void show_gui_interaction_instructions() {
+	char buff[100];
+	int x, y;
+	int white, yellow, blue;
+	int x_offset;
+
+	white = makecol(255,255,255);
+	blue = makecol(100,149,237);
+	yellow = makecol(255,255,0);
+
+	x = 10;
+	y = 10;
+	x_offset = 50;
+
+	clear_to_color(instructions_bmp, 0);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Keyboard shortcuts");
+	textout_ex(instructions_bmp, font, buff, x, y, blue, -1);
+
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key A ");
+	textout_ex(instructions_bmp, font, buff, x, y + 20, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"increase acceleration input");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 20, white, -1);
+
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key Q ");
+	textout_ex(instructions_bmp, font, buff, x, y + 40, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"decrease acceleration input");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 40, white, -1);
+
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"ARROW UP/DOWN" );
+	textout_ex(instructions_bmp, font, buff, x, y + 60, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"change car's max velocity allowed");
+	textout_ex(instructions_bmp, font, buff, x + 115, y + 60, white, -1);
+
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key M ");
+	textout_ex(instructions_bmp, font, buff, x, y + 80, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"switch between INFERENCE and TRAINING mode");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 80, white, -1);
+
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key L ");
+	textout_ex(instructions_bmp, font, buff, x, y + 100, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"load Q matrix from file");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 100, white, -1);
+
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key S ");
+	textout_ex(instructions_bmp, font, buff, x, y + 120, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"save Q matrix to file");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 120, white, -1);
+
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"Key D ");
+	textout_ex(instructions_bmp, font, buff, x, y + 140, yellow, -1);
+	memset(buff, 0, sizeof buff);
+	sprintf(buff,"enable/disable lidar beams drawing");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 140, white, -1);
+
+	rect(instructions_bmp, 5, 5, x + 400, y + 160, blue);
+	blit(instructions_bmp, screen, 0, 0, 10, 10, instructions_bmp->w, instructions_bmp->h);
+}
+
+// visualize current state "S" and Q values of each action on state "S" 
+void show_Q_matrix() {
+	struct Agent agent;
+	float action_val;
+	int x, y, i;
+	int MAX_FLOAT_SIZE =6;
+	int DEBUG_SIZE = 200;
+	int N_ACTIONS_STEER, N_ACTIONS_VEL;
+	struct Actions_ID best_act, agent_act;
+	char debug[DEBUG_SIZE];
+	char action_buff[12];
+	int white, green, yellow, blue;
+
+	white = makecol(255,255,255);
+	green = makecol(0,255,0);
+	yellow = makecol(255,255,0);
+	blue = makecol(100,149,237);
+
+	// find number of actions
+	N_ACTIONS_STEER = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
+	N_ACTIONS_VEL = (int)((MAX_A/G * 2)/ACC_STEP) + 1;
+	// check for buffer overflow
+	assert((N_ACTIONS_STEER * MAX_FLOAT_SIZE) < (DEBUG_SIZE - 10));
+	assert((N_ACTIONS_VEL * MAX_FLOAT_SIZE) < (DEBUG_SIZE - 10));
+	// (x,y) where start drawing 
+	x = 0;
+	y = instructions_bmp->h - 50;
+
+	// get agent related info
+	pthread_mutex_lock(&mux_agent);
+	agent = agents[0];
+	pthread_mutex_unlock(&mux_agent);
+
+	// get Q_learn data
+	best_act = ql_best_action(agent.state);
+
+	clear_to_color(graph_bmp, 0);
+	// write data on GUI
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"state: %d", agent.state);
+	textout_ex(graph_bmp, font, debug, x, (y + 10), white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"best IDs: steer = %d, vel = %d", best_act.steer_act_id, best_act.vel_act_id);
+	textout_ex(graph_bmp, font, debug, x, (y + 20), green, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"used IDs: steer = %d, vel = %d", agent.a_id.steer_act_id, agent.a_id.vel_act_id);
+	textout_ex(graph_bmp, font, debug, x, (y + 30), blue, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"Q[s] actions row: ");
+	textout_ex(graph_bmp, font, debug, x, (y + 40), white, -1);
+	memset(debug, 0, sizeof debug);
+	for(i = 0; i < N_ACTIONS_STEER; i++) {
+		action_val = ql_get_Q(agent.state, i);
+		memset(action_buff, 0, sizeof action_buff);
+		sprintf(action_buff, "%.2f | ", action_val);
+
+		strcat(debug, action_buff);
+	}
+	textout_ex(graph_bmp, font, debug, x, (y + 50), white, -1);
+
+	blit(graph_bmp, instructions_bmp, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
 }
 
 // update the distance measured by lidars at each timestamp
@@ -1141,7 +1300,7 @@ struct Car update_car_model(struct Agent agent) {
 
 // update a bitmap with debug information about car and agent
 void write_debug() {
-	int white;
+	int white, yellow;
 	int x, y;
 	int i;
 	int index;
@@ -1150,6 +1309,7 @@ void write_debug() {
 	
 	x = 0;
 	white = makecol(255,255,255);
+	yellow = makecol(255,255,0);
 	clear_to_color(debug_bmp, 0);
 
 	pthread_mutex_lock(&mux_agent);
@@ -1159,6 +1319,10 @@ void write_debug() {
 	}
 	//agent = agents[0];
 	pthread_mutex_unlock(&mux_agent);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"Car Telemetry");
+	textout_ex(debug_bmp, font, debug, x, 10, yellow, -1);
 
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"x: %f m", agent.car.x);
@@ -1177,40 +1341,44 @@ void write_debug() {
 	textout_ex(debug_bmp, font, debug, x, 50, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"act.a: %f m/s^2", agent.action.a);
-	textout_ex(debug_bmp, font, debug, x, 60, white, -1);
+	sprintf(debug,"Controls Input");
+	textout_ex(debug_bmp, font, debug, x, 60, yellow, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"act.steer: %f rad", agent.action.delta);
+	sprintf(debug,"act.a: %f m/s^2", agent.action.a);
 	textout_ex(debug_bmp, font, debug, x, 70, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"max steer: %f rad", deg_to_rad(MAX_THETA));
+	sprintf(debug,"act.steer: %f rad", agent.action.delta);
 	textout_ex(debug_bmp, font, debug, x, 80, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"max steer: %f rad", deg_to_rad(MAX_THETA));
+	textout_ex(debug_bmp, font, debug, x, 90, white, -1);
 	
 	memset(debug, 0, sizeof debug);
+	sprintf(debug,"Reinforcement Learning Data");
+	textout_ex(debug_bmp, font, debug, x, 100, yellow, -1);
+
+	memset(debug, 0, sizeof debug);
 	sprintf(debug,"gamma: %f", ql_get_discount_factor());
-	textout_ex(debug_bmp, font, debug, x, 90, white, -1);
-
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"alpha: %f", ql_get_learning_rate());
-	textout_ex(debug_bmp, font, debug, x, 100, white, -1);
-
-	memset(debug, 0, sizeof debug);
-	sprintf(debug,"epsilon: %f", ql_get_epsilon());
 	textout_ex(debug_bmp, font, debug, x, 110, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"episode: %d", episode);
+	sprintf(debug,"alpha: %f", ql_get_learning_rate());
 	textout_ex(debug_bmp, font, debug, x, 120, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"alive: %d", agent.alive);
+	sprintf(debug,"epsilon: %f", ql_get_epsilon());
 	textout_ex(debug_bmp, font, debug, x, 130, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"distance: %f", agent.distance);
+	sprintf(debug,"episode: %d", episode);
 	textout_ex(debug_bmp, font, debug, x, 140, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"driven distance: %.3f m", agent.distance);
+	textout_ex(debug_bmp, font, debug, x, 150, white, -1);
 
 	memset(debug, 0, sizeof debug);
 	if (ql_get_rl_mode() == INFERENCE) {
@@ -1219,21 +1387,21 @@ void write_debug() {
 	else if (ql_get_rl_mode() == TRAINING) {
 		sprintf(debug,"RL mode: training");
 	}
-	textout_ex(debug_bmp, font, debug, x, 150, white, -1);
+	textout_ex(debug_bmp, font, debug, x, 160, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"max v: %f m/s", MAX_V_ALLOWED);
-	textout_ex(debug_bmp, font, debug, x, 160, white, -1);
+	sprintf(debug,"max v allowed: %f m/s", MAX_V_ALLOWED);
+	textout_ex(debug_bmp, font, debug, x, 170, white, -1);
 
 	index = episode - 1;
 	memset(debug, 0, sizeof debug);
 	//printf(" td_error: %f \n \n", statistics[index].total_td_error);
 	sprintf(debug,"ep. TD error: %.3f", statistics[index].total_td_error);
-	textout_ex(debug_bmp, font, debug, x, 170, white, -1);
+	textout_ex(debug_bmp, font, debug, x, 190, white, -1);
 
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"ep. reward: %.3f", statistics[index].total_reward);
-	textout_ex(debug_bmp, font, debug, x, 180, white, -1);
+	textout_ex(debug_bmp, font, debug, x, 200, white, -1);
 	//pthread_mutex_unlock(&mux_agent);
 
 	x = SIM_X;
@@ -1492,20 +1660,12 @@ float learn_to_drive() {
 	}
 	pthread_mutex_unlock(&mux_agent);
 
-	pthread_mutex_lock(&mux_cbuffer);
-	for(i = 0; i < BUF_LEN; i++) {
-		curr_s = s_new[0]; // save to graph the action of first agent only
-		act = ql_get_Q(curr_s, i);
-		push_to_cbuf(i, act, i);
-		//printf("s: %d, Q: %d\n", curr_s, act);
-	}
-	pthread_mutex_unlock(&mux_cbuffer);
 	// error handling is wrong !!  needs to be changed
 	return max_err;
 }
 
 // initialize hyper parameters used by the Q-Learning algorithm
-void init_qlearn_params() {
+void init_qlearn_training_mode() {
 	int n_states, n_actions_steer, n_actions_vel;
 
 	printf("*** Initializing epsilon-greedy params: \n");
@@ -1520,6 +1680,25 @@ void init_qlearn_params() {
 	ql_set_discount_factor(0.95);
 	ql_set_expl_factor(0.4);
 	ql_set_expl_range(0.4, 0.1);
+	ql_set_expl_decay(0.99);
+	printf("---------\n");
+}
+
+void init_qlearn_inference_mode() {
+	int n_states, n_actions_steer, n_actions_vel;
+
+	printf("*** Initializing epsilon-greedy params: \n");
+	n_states = MAX_STATES_LIDAR*MAX_STATES_LIDAR;
+	//n_actions = (MAX_THETA * 2) - 1;
+	n_actions_steer = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
+	n_actions_vel = (int)((MAX_A/G * 2)/ACC_STEP) + 1;
+	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
+	ql_init(n_states, n_actions_steer, n_actions_vel);
+	// modify specific params by calling related function
+	ql_set_learning_rate(0.6);
+	ql_set_discount_factor(0.95);
+	ql_set_expl_factor(0.0);
+	ql_set_expl_range(0.0, 0.0);
 	ql_set_expl_decay(0.99);
 	printf("---------\n");
 }
@@ -1682,7 +1861,6 @@ void read_Q_matrix_from_file() {
 		}
 	}
 
-	printf(" previous Q val: %f \n", ql_get_Q(27,0));
 	size = 1024;
 	while (fgets(q_buff, size, fp) != NULL) {
 		ptr = q_buff;
@@ -1694,7 +1872,6 @@ void read_Q_matrix_from_file() {
 		}
 		i++;
 	}
-	printf(" new Q val: %f \n", ql_get_Q(27,0));
 	printf("Q matrix restored!\n");
 }
 
@@ -1733,7 +1910,7 @@ void read_Q_vel_matrix_from_file() {
 		}
 	}
 
-	printf(" previous Q_vel val: %f \n", ql_get_Q_vel(27,0));
+	//printf(" previous Q_vel val: %f \n", ql_get_Q_vel(27,0));
 	size = 1024;
 	while (fgets(q_buff, size, fp) != NULL) {
 		ptr = q_buff;
@@ -1745,7 +1922,7 @@ void read_Q_vel_matrix_from_file() {
 		}
 		i++;
 	}
-	printf(" new Q_vel val: %f \n", ql_get_Q_vel(27,0));
+	//printf(" new Q_vel val: %f \n", ql_get_Q_vel(27,0));
 	printf("Q_vel matrix restored!\n");
 }
 
@@ -1803,7 +1980,8 @@ void single_thread_learning() {
 	int s[MAX_AGENTS], s_new[MAX_AGENTS];
 	float err;
 	float r[MAX_AGENTS];
-	int i, act;
+	int i;
+	float act;
 	struct Agent agent;
 	struct Lidar car_sensors[3];
 	int d_l[MAX_AGENTS], d_f[MAX_AGENTS], d_r[MAX_AGENTS]; // lidar distances
@@ -1866,16 +2044,5 @@ void single_thread_learning() {
 		agents[i] = agent;
 	}
 	pthread_mutex_unlock(&mux_agent);
-	pthread_mutex_lock(&mux_cbuffer);
-	// BUF_LEN = number of actions
-	for(i = 0; i < BUF_LEN; i++) {
-		if (agents[0].alive == 0)
-			break;
-		// save to graph the action of first agent only
-		act = ql_get_Q(agents[0].state, i);
-		push_to_cbuf(i, act, i);
-		//printf("s: %d, Q: %d\n", curr_s, act);
-	}
-	pthread_mutex_unlock(&mux_cbuffer);
 }
 

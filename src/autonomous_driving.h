@@ -160,13 +160,6 @@ struct Agent {
 	// da aggiungere il reward
 };
 
-struct cbuf {
-	int head;
-	int tail;
-	int x[BUF_LEN];
-	int y[BUF_LEN];
-};
-
 /*-----------------------------------------------------------------------------*/
 /*								GLOBAL VARIABLES							   */
 /*-----------------------------------------------------------------------------*/
@@ -176,6 +169,7 @@ BITMAP *scene_bmp = NULL;
 BITMAP *debug_bmp = NULL;
 BITMAP *deadline_bmp = NULL;
 BITMAP *graph_bmp = NULL;
+BITMAP *instructions_bmp = NULL;
 
 float MAX_V_ALLOWED = 5.0;
 struct Agent agent; // to be removed
@@ -188,8 +182,7 @@ float rwd_previous_delta = 0.0;
 struct Lidar sensors[MAX_AGENTS][3];
 int disable_sensors = 0;
 
-struct cbuf graph_buff;
-int graph_index = 0;
+int graph_index = 0; // check if i should delete it
 
 float max_reward = RWD_CRASH;
 float conv_delta = 0.0;
@@ -228,6 +221,8 @@ void update_scene();
 void reset_scene();
 void show_dmiss();
 void show_rl_graph();
+void show_Q_matrix();
+void show_gui_interaction_instructions();
 //------------------------------- Tasks --------------------------------------
 void* comms_task(void* arg);
 void* display_task(void* arg);
@@ -243,7 +238,8 @@ void get_updated_lidars_distance(struct Car car, struct Lidar car_sensors[]);
 char interpreter();
 //-------------------------------- Reinforcement Learning --------------------
 
-void init_qlearn_params();
+void init_qlearn_training_mode();
+void init_qlearn_inference_mode();
 struct Car update_car_model(struct Agent agent);
 void crash_check();
 int is_car_offtrack(struct Car car);
@@ -269,6 +265,4 @@ float deg_to_rad(float deg_angle);
 float rad_to_deg(float rad_angle);
 char get_scancode();
 fixed deg_to_fixed(float deg);
-void push_to_cbuf(int x, int y, int id);
-int is_cbuff_empty();
 void write_debug();

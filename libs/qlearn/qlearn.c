@@ -30,6 +30,7 @@ static float Q[MAX_STATES][MAX_ACTIONS];
 
 // Q matrix related to velocity
 static float Q_vel[MAX_STATES][MAX_ACTIONS];
+
 static float T_r[MAX_STATES][MAX_ACTIONS];
 
 float frand(float xmin, float xmax) {
