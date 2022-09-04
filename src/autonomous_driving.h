@@ -173,7 +173,7 @@ BITMAP *instructions_bmp = NULL;
 
 float MAX_V_ALLOWED = 5.0;
 struct Agent rl_agent; // to be removed
-struct Agent agents[MAX_AGENTS];
+//struct Agent agents[MAX_AGENTS];
 int end = 0;
 char debug[LEN];
 float rwd_distance_counter = 0.0;
