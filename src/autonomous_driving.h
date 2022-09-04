@@ -172,14 +172,14 @@ BITMAP *graph_bmp = NULL;
 BITMAP *instructions_bmp = NULL;
 
 float MAX_V_ALLOWED = 5.0;
-struct Agent agent; // to be removed
-struct Agent agents[MAX_AGENTS];
+struct Agent rl_agent; // to be removed
+//struct Agent agents[MAX_AGENTS];
 int end = 0;
 char debug[LEN];
 float rwd_distance_counter = 0.0;
 float rwd_previous_delta = 0.0;
 
-struct Lidar sensors[MAX_AGENTS][3];
+struct Lidar sensors[3];
 int disable_sensors = 0;
 
 int graph_index = 0; // check if i should delete it

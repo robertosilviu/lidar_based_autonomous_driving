@@ -137,18 +137,18 @@ void draw_car() {
 	struct ViewPoint vertices[4];
 	
 	pthread_mutex_lock(&mux_agent);
-	for(i = 0; i < MAX_AGENTS; i++) {
-		find_rect_vertices(vertices, 4, agents[i].car);
-		points[0] = vertices[0].x;
-		points[1] = vertices[0].y;
-		points[2] = vertices[1].x;
-		points[3] = vertices[1].y;
-		points[4] = vertices[2].x;
-		points[5] = vertices[2].y;
-		points[6] = vertices[3].x;
-		points[7] = vertices[3].y;
-		polygon(scene_bmp, 4, points, makecol(51,153,255));
-	}
+	
+	find_rect_vertices(vertices, 4, rl_agent.car);
+	points[0] = vertices[0].x;
+	points[1] = vertices[0].y;
+	points[2] = vertices[1].x;
+	points[3] = vertices[1].y;
+	points[4] = vertices[2].x;
+	points[5] = vertices[2].y;
+	points[6] = vertices[3].x;
+	points[7] = vertices[3].y;
+	polygon(scene_bmp, 4, points, makecol(51,153,255));
+
 	pthread_mutex_unlock(&mux_agent);
 }
 
@@ -163,10 +163,10 @@ void find_rect_vertices(struct ViewPoint vertices[], int size, struct Car car) {
 		printf("ERROR: find_rect_vertices requires array with dimension = 4!\n");
 		exit(1);
 	}
-	//car = agents[id].car;
+
 	ca = cos(car.theta);
 	sa = sin(car.theta);
-	// p1 = (0, /WD/2)
+	// p1 = (0, -WD/2) // check error -wd or wd
 	x1 = car.x + WD/2*sa;
 	y1 = car.y - WD/2*ca;
 	// p2 = (0, WD/2)
@@ -198,22 +198,22 @@ void draw_sensors() {
 	col = makecol(255,255,255);
 
 	pthread_mutex_lock(&mux_sensors);
-	for(i = 0; i < MAX_AGENTS; i++) {
-		lidar = sensors[i][0];
-		x = lidar.x + lidar.d*cos(lidar.alpha);
-		y = lidar.y - lidar.d*sin(lidar.alpha);
-		line(scene_bmp, lidar.x, lidar.y, x, y, col);
 
-		lidar = sensors[i][1];
-		x = lidar.x + lidar.d*cos(lidar.alpha);
-		y = lidar.y - lidar.d*sin(lidar.alpha);
-		line(scene_bmp, lidar.x, lidar.y, x, y, col);
+	lidar = sensors[0];
+	x = lidar.x + lidar.d*cos(lidar.alpha);
+	y = lidar.y - lidar.d*sin(lidar.alpha);
+	line(scene_bmp, lidar.x, lidar.y, x, y, col);
 
-		lidar = sensors[i][2];		
-		x = lidar.x + lidar.d*cos(lidar.alpha);
-		y = lidar.y - lidar.d*sin(lidar.alpha);
-		line(scene_bmp, lidar.x, lidar.y, x, y, col);
-	}
+	lidar = sensors[1];
+	x = lidar.x + lidar.d*cos(lidar.alpha);
+	y = lidar.y - lidar.d*sin(lidar.alpha);
+	line(scene_bmp, lidar.x, lidar.y, x, y, col);
+
+	lidar = sensors[2];		
+	x = lidar.x + lidar.d*cos(lidar.alpha);
+	y = lidar.y - lidar.d*sin(lidar.alpha);
+	line(scene_bmp, lidar.x, lidar.y, x, y, col);
+
 	pthread_mutex_unlock(&mux_sensors);
 }
 
@@ -222,9 +222,9 @@ void draw_sensors() {
 void crash_check() {
 	int found;
 	int i, k; // used for for cycles
-	int dead_agents[MAX_AGENTS];
+	int dead_agent;
 	struct Car new_car;
-	struct ViewPoint vertices[MAX_AGENTS][4];
+	struct ViewPoint vertices[4];
 
 	// initialize empty car to reset dead agent's car
 	new_car.v = 0.0;
@@ -232,33 +232,32 @@ void crash_check() {
 	new_car.y = pose_pool[pool_index][1];
 	new_car.theta = pose_pool[pool_index][2];
 
-	for(i = 0; i < MAX_AGENTS; i++) {
-		dead_agents[i] = 0;
-	}
-	pthread_mutex_lock(&mux_agent);
-	for(i = 0; i < MAX_AGENTS; i++) {
-		find_rect_vertices(vertices[i], 4, agents[i].car);
-		// use y=mx +b
-		found = 0;
-		for(k = 0; k < 4; k++) {
-			found = check_color_px_in_line(
-						vertices[i][(k+1)%4].x,
-						vertices[i][(k+1)%4].y,
-						vertices[i][k%4].x,
-						vertices[i][k%4].y,
-						0);
-			if(found)
-				dead_agents[i] = 1;
-		}
+	dead_agent = 0;
 
-		if (dead_agents[i] == 1) {
-			agents[i].alive = 0;
-			//agents[i].car.v = 0.0;
-			agents[i].car = new_car;
-			//printf("dead agent %d\n", i);
-			// at each restart the agent should change some parameters for the next simulation
-		}
+	pthread_mutex_lock(&mux_agent);
+
+	find_rect_vertices(vertices, 4, rl_agent.car);
+	// use y=mx +b
+	found = 0;
+	for(k = 0; k < 4; k++) {
+		found = check_color_px_in_line(
+					vertices[(k+1)%4].x,
+					vertices[(k+1)%4].y,
+					vertices[k%4].x,
+					vertices[k%4].y,
+					0);
+		if(found)
+			dead_agent = 1;
 	}
+
+	if (dead_agent == 1) {
+		rl_agent.alive = 0;
+		//rl_agent.car.v = 0.0;
+		rl_agent.car = new_car;
+		//printf("dead agent %d\n", i);
+		// at each restart the agent should change some parameters for the next simulation
+	}
+
 	pthread_mutex_unlock(&mux_agent);
 }
 
@@ -361,16 +360,18 @@ void show_rl_graph() {
 	line(graph_bmp, x_offset, px_h, x_offset, 0, white);	// y
 
 	pthread_mutex_lock(&mux_agent);
-	agent = agents[0];
+	agent = rl_agent;
 	pthread_mutex_unlock(&mux_agent);
 
 	best_act = ql_best_action(agent.state);
 	// i should use buffer for Q matrix access
 	assert(BUF_LEN == ql_get_nactions());
 	// save actions row from Q matrix on state s
+	pthread_mutex_lock(&mux_q_matrix);
 	for(i = 0; i < BUF_LEN; i++) {
 		act_values[i] = ql_get_Q(agent.state, i);
 	}
+	pthread_mutex_unlock(&mux_q_matrix);
 	// get max elem of buffer
 	for(i = 0; i < BUF_LEN; i++) {
 		if(fabs(act_values[i]) > g_h)
@@ -469,10 +470,8 @@ void* agent_task(void* arg) {
 			
 			// reset dead agent
 			pthread_mutex_lock(&mux_agent);
-			for(j = 0; j < MAX_AGENTS; j++) {
-				if (agents[j].alive == 1) {
-					alive_flag = 1;
-				}
+			if (rl_agent.alive == 1) {
+				alive_flag = 1;
 			}
 			// no agent alive, start new episode
 			if(alive_flag == 0) {
@@ -485,15 +484,13 @@ void* agent_task(void* arg) {
 					printf("Changing initial pose!\n");
 				}
 
-				for(j = 0; j < MAX_AGENTS; j++) {
-						agents[j].alive = 1;
-						new_car.v = TRAIN_VEL;
-						new_car.x = pose_pool[pool_index][0];
-						new_car.y = pose_pool[pool_index][1];
-						new_car.theta = pose_pool[pool_index][2];
-						agents[j].car = new_car;
-						//printf("Reset agent %d!\n", j);
-				}
+				rl_agent.alive = 1;
+				new_car.v = TRAIN_VEL;
+				new_car.x = pose_pool[pool_index][0];
+				new_car.y = pose_pool[pool_index][1];
+				new_car.theta = pose_pool[pool_index][2];
+				rl_agent.car = new_car;
+				//printf("Reset agent %d!\n", j);
 			}
 			pthread_mutex_unlock(&mux_agent);
 		//}
@@ -524,27 +521,27 @@ void* learning_task(void* arg) {
 	set_activation(i);
 
 	pthread_mutex_lock(&mux_sensors);
-	for(j = 0; j < MAX_AGENTS; j++) {
-		d_l = sensors[j][0].d;
-		d_f = sensors[j][1].d;
-		d_r = sensors[j][2].d;
-		s = decode_lidar_to_state(d_l, d_r, d_f);
-		a = ql_egreedy_policy(s);
-		// correct only in single thread. should have mux otherwise
-		agents[j].state = s;
-		agents[j].a_id = a;
-		// sarsa
-		//printf("action for agent %d is %d\n", i, a[i]);
-	}
+	d_l = sensors[0].d;
+	d_f = sensors[1].d;
+	d_r = sensors[2].d;
 	pthread_mutex_unlock(&mux_sensors);
+
+	s = decode_lidar_to_state(d_l, d_r, d_f);
+
+	pthread_mutex_lock(&mux_q_matrix);
+	a = ql_egreedy_policy(s);
+	pthread_mutex_unlock(&mux_q_matrix);
+
+	// correct only in single thread. should have mux otherwise
+	rl_agent.state = s;
+	rl_agent.a_id = a;
+	
 	do {
 		crash_check();
 		// interrupt training after driving on whole track
 		// for certain amount of meters
-		for(j = 0; j < MAX_AGENTS; j++) {
-			if (agents[j].distance > 1200)
-				agents[j].alive = 0;
-		}
+		if (rl_agent.distance > 1200)
+			rl_agent.alive = 0;
 
 		alive_flag = 0;
 		// need to update agent when crash occured
@@ -552,13 +549,11 @@ void* learning_task(void* arg) {
 		single_thread_learning();
 	
 		index = episode-1;
-		statistics[index] = agents[0].ep_stats;
+		statistics[index] = rl_agent.ep_stats;
 		// reset dead agent
 		//pthread_mutex_lock(&mux_agent);
-		for(j = 0; j < MAX_AGENTS; j++) {
-			if (agents[j].alive == 1) {
-				alive_flag = 1;
-			}
+		if (rl_agent.alive == 1) {
+			alive_flag = 1;
 		}
 
 		// no agent alive, start new episode
@@ -576,43 +571,40 @@ void* learning_task(void* arg) {
 				printf("Changing initial pose!\n");
 			}
 
-			for(j = 0; j < MAX_AGENTS; j++) {
-					agents[j].alive = 1;
-					agents[j].distance = 0.0;
-					rwd_distance_counter = 0.0;
-					
-					// train_mode=1 -> train only steering
-					if (train_only_steering)
-						new_car.v = MAX_V_ALLOWED;
-					else
-						new_car.v = TRAIN_VEL;
-					new_car.x = pose_pool[pool_index][0];
-					new_car.y = pose_pool[pool_index][1];
-					new_car.theta = pose_pool[pool_index][2];
-					
-					agents[j].car = new_car;
+			rl_agent.alive = 1;
+			rl_agent.distance = 0.0;
+			rwd_distance_counter = 0.0;
+			
+			// train_mode=1 -> train only steering
+			if (train_only_steering)
+				new_car.v = MAX_V_ALLOWED;
+			else
+				new_car.v = TRAIN_VEL;
+			new_car.x = pose_pool[pool_index][0];
+			new_car.y = pose_pool[pool_index][1];
+			new_car.theta = pose_pool[pool_index][2];
+			
+			rl_agent.car = new_car;
 
-					// reset episode stats
-					struct EpisodeStats stats;
-					stats.steps = 0;
-					stats.total_reward = 0.0;
-					stats.total_td_error = 0.0;
+			// reset episode stats
+			struct EpisodeStats stats;
+			stats.steps = 0;
+			stats.total_reward = 0.0;
+			stats.total_td_error = 0.0;
 
-					agents[j].ep_stats = stats;
-					//printf("Reset agent %d!\n", j);
-			}
+			rl_agent.ep_stats = stats;
+			//printf("Reset agent %d!\n", j);
+
 			// refresh sensors with initial pose
 			refresh_sensors();
 			// update initial state for learning
-			for(j = 0; j < MAX_AGENTS; j++) {
-				d_l = sensors[j][0].d;
-				d_f = sensors[j][1].d;
-				d_r = sensors[j][2].d;
-				s = decode_lidar_to_state(d_l, d_r, d_f);
-				a = ql_egreedy_policy(s);
-				agents[j].state = s;
-				agents[j].a_id = a;
-			}
+			d_l = sensors[0].d;
+			d_f = sensors[1].d;
+			d_r = sensors[2].d;
+			s = decode_lidar_to_state(d_l, d_r, d_f);
+			a = ql_egreedy_policy(s);
+			rl_agent.state = s;
+			rl_agent.a_id = a;
 		}
 		//pthread_mutex_unlock(&mux_agent);
 	//}
@@ -693,8 +685,8 @@ char interpreter() {
 
 	if (keypressed()) {
 		pthread_mutex_lock(&mux_agent);
-		act = agents[0].action;
-		//car = agents[0].car;
+		act = rl_agent.action;
+		pthread_mutex_unlock(&mux_agent);
 		delta = rad_to_deg(act.delta);
 		scan = get_scancode();
 		switch (scan) {
@@ -734,6 +726,7 @@ char interpreter() {
 				break;
 			case KEY_M:
 				mode = ql_get_rl_mode();
+				pthread_mutex_lock(&mux_q_matrix);
 				if( mode == TRAINING) {
 					ql_set_rl_mode(INFERENCE);
 					init_qlearn_inference_mode();
@@ -746,26 +739,27 @@ char interpreter() {
 					printf("ERROR: wrong mode! Should be %d or %d\n", TRAINING, INFERENCE);
 					exit(1);
 				}
+				pthread_mutex_unlock(&mux_q_matrix);
 				break;
 			case KEY_L:
 				printf("Loading Q matrix from file %s\n", Q_MAT_FILE_NAME);
-				pthread_mutex_lock(&mux_q_matrix);
+				//pthread_mutex_lock(&mux_q_matrix);
 				// Q Learning
 				read_Q_matrix_from_file();
 				read_Q_vel_matrix_from_file();
 				read_Tr_matrix_from_file();
-				pthread_mutex_unlock(&mux_q_matrix);
+				//pthread_mutex_unlock(&mux_q_matrix);
 				break;
 			case KEY_S:
 				printf("Saving Q matrix to file %s\n", Q_MAT_FILE_NAME);
-				pthread_mutex_lock(&mux_q_matrix);
+				//pthread_mutex_lock(&mux_q_matrix);
 				// Q Learning
 				save_Q_matrix_to_file();
 				save_Q_vel_matrix_to_file();
 				save_Tr_matrix_to_file();
 				// save episodes statistics on file for further analysis 
 				save_episodes_stats_to_file();
-				pthread_mutex_unlock(&mux_q_matrix);
+				//pthread_mutex_unlock(&mux_q_matrix);
 				break;
 			case KEY_D:
 				if (disable_sensors) {
@@ -781,9 +775,9 @@ char interpreter() {
 		}
 
 		//printf("delta: %f, d_rad: %f\n", delta, act.delta);
-		agents[0].action = act;
-		//printf("a: %f, delta: %f \n", agents[0].action.a, agents[0].action.delta);
-		//agents[0].car = car;
+		pthread_mutex_lock(&mux_agent);
+		rl_agent.action = act;
+		//printf("a: %f, delta: %f \n", rl_agent.action.a, rl_agent.action.delta);
 		pthread_mutex_unlock(&mux_agent);
 	}
 
@@ -839,20 +833,20 @@ void init_agent() {
 		vehicle.v = TRAIN_VEL;
 	//vehicle.a = 0.0;
 	
-	for(i = 0; i < MAX_AGENTS; i++) {
-		agents[i].alive = 1;
-		agents[i].distance = 0.0;
-		agents[i].car = vehicle;
-		agents[i].error = 0.0;
-		agents[i].state = 0; // should be checked if it is ok to use a wrong state
+	pthread_mutex_lock(&mux_agent);
+	rl_agent.alive = 1;
+	rl_agent.distance = 0.0;
+	rl_agent.car = vehicle;
+	rl_agent.error = 0.0;
+	rl_agent.state = 0; // should be checked if it is ok to use a wrong state
 
-		// reset episode stats
-		struct EpisodeStats stats;
-		stats.steps = 0;
-		stats.total_reward = 0.0;
-		stats.total_td_error = 0.0;
-		agents[i].ep_stats = stats;
-	}
+	// reset episode stats
+	struct EpisodeStats stats;
+	stats.steps = 0;
+	stats.total_reward = 0.0;
+	stats.total_td_error = 0.0;
+	rl_agent.ep_stats = stats;
+	pthread_mutex_unlock(&mux_agent);
 }
 
 // defines an array of different initial poses on track 
@@ -1062,11 +1056,13 @@ void show_Q_matrix() {
 
 	// get agent related info
 	pthread_mutex_lock(&mux_agent);
-	agent = agents[0];
+	agent = rl_agent;
 	pthread_mutex_unlock(&mux_agent);
 
 	// get Q_learn data
+	pthread_mutex_lock(&mux_q_matrix);
 	best_act = ql_best_action(agent.state);
+	pthread_mutex_unlock(&mux_q_matrix);
 
 	clear_to_color(graph_bmp, 0);
 	// write data on GUI
@@ -1086,6 +1082,8 @@ void show_Q_matrix() {
 	sprintf(debug,"Q[s] actions row: ");
 	textout_ex(graph_bmp, font, debug, x, (y + 40), white, -1);
 	memset(debug, 0, sizeof debug);
+
+	pthread_mutex_lock(&mux_q_matrix);
 	for(i = 0; i < N_ACTIONS_STEER; i++) {
 		action_val = ql_get_Q(agent.state, i);
 		memset(action_buff, 0, sizeof action_buff);
@@ -1093,6 +1091,8 @@ void show_Q_matrix() {
 
 		strcat(debug, action_buff);
 	}
+	pthread_mutex_unlock(&mux_q_matrix);
+
 	textout_ex(graph_bmp, font, debug, x, (y + 50), white, -1);
 
 	blit(graph_bmp, instructions_bmp, 0, 0, 10, 10, graph_bmp->w, graph_bmp->h);
@@ -1103,54 +1103,50 @@ void refresh_sensors() {
 	int i;
 	struct Lidar lidar;
 	struct Car car;
-	struct Lidar tmp_sensors[MAX_AGENTS][3];
+	struct Lidar tmp_sensors[3];
 	float x_p, y_p;
-	pthread_mutex_lock(&mux_agent);
 
-	for(i = 0; i < MAX_AGENTS; i++) {
-		car = agents[i].car;
-		// left lidar
-		//lidar.alpha = car.theta + deg_to_rad(45.0);
-		lidar.alpha = car.theta + deg_to_rad(LIDAR_ANGLE_POS);
-		x_p = car.x + L*cos(car.theta);	// global frame in m from bottom left
-		y_p = car.y + L*sin(car.theta);
-		//printf("x_p: %f, y_p: %f\n", x_p, y_p);
-		lidar.x = BTM_X + (x_p/SCALE);
-		lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
-		lidar.d = read_sensor(
-						lidar.x, 
-						lidar.y, 
-						lidar.alpha);
-		tmp_sensors[i][0] = lidar;
-		// front
-		lidar.alpha = car.theta + deg_to_rad(0.0);
-		lidar.x = BTM_X + (x_p/SCALE);
-		lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
-		lidar.d = read_sensor(
-						lidar.x, 
-						lidar.y, 
-						lidar.alpha);
-		tmp_sensors[i][1] = lidar;
-		// right
-		//lidar.alpha = car.theta + deg_to_rad(-45.0);
-		lidar.alpha = car.theta + deg_to_rad(LIDAR_ANGLE_NEG);
-		lidar.x = BTM_X + (x_p/SCALE);
-		lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
-		lidar.d = read_sensor(
-						lidar.x, 
-						lidar.y, 
-						lidar.alpha);
-		tmp_sensors[i][2] = lidar;
-	}
+	pthread_mutex_lock(&mux_agent);
+	car = rl_agent.car;
+	// left lidar
+	//lidar.alpha = car.theta + deg_to_rad(45.0);
+	lidar.alpha = car.theta + deg_to_rad(LIDAR_ANGLE_POS);
+	x_p = car.x + L*cos(car.theta);	// global frame in m from bottom left
+	y_p = car.y + L*sin(car.theta);
+	//printf("x_p: %f, y_p: %f\n", x_p, y_p);
+	lidar.x = BTM_X + (x_p/SCALE);
+	lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
+	lidar.d = read_sensor(
+					lidar.x, 
+					lidar.y, 
+					lidar.alpha);
+	tmp_sensors[0] = lidar;
+	// front
+	lidar.alpha = car.theta + deg_to_rad(0.0);
+	lidar.x = BTM_X + (x_p/SCALE);
+	lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
+	lidar.d = read_sensor(
+					lidar.x, 
+					lidar.y, 
+					lidar.alpha);
+	tmp_sensors[1] = lidar;
+	// right
+	//lidar.alpha = car.theta + deg_to_rad(-45.0);
+	lidar.alpha = car.theta + deg_to_rad(LIDAR_ANGLE_NEG);
+	lidar.x = BTM_X + (x_p/SCALE);
+	lidar.y = SIM_Y - (BTM_Y + y_p/SCALE);
+	lidar.d = read_sensor(
+					lidar.x, 
+					lidar.y, 
+					lidar.alpha);
+	tmp_sensors[2] = lidar;
 	pthread_mutex_unlock(&mux_agent);
 
 	// save the updated sensors measurements to global variable
 	pthread_mutex_lock(&mux_sensors);
-	for(i = 0; i< MAX_AGENTS; i++) {
-		sensors[i][0] = tmp_sensors[i][0];
-		sensors[i][1] = tmp_sensors[i][1];
-		sensors[i][2] = tmp_sensors[i][2];
-	}
+	sensors[0] = tmp_sensors[0];
+	sensors[1] = tmp_sensors[1];
+	sensors[2] = tmp_sensors[2];
 	pthread_mutex_unlock(&mux_sensors);
 }
 
@@ -1313,11 +1309,7 @@ void write_debug() {
 	clear_to_color(debug_bmp, 0);
 
 	pthread_mutex_lock(&mux_agent);
-	for(i = 0; i < MAX_AGENTS; i++) {
-		if(agents[i].alive)
-			agent = agents[i];
-	}
-	//agent = agents[0];
+	agent = rl_agent;
 	pthread_mutex_unlock(&mux_agent);
 
 	memset(debug, 0, sizeof debug);
@@ -1605,54 +1597,52 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 
 // multi thread learning algorithm
 float learn_to_drive() {
-	struct Actions_ID a[MAX_AGENTS];
-	int s[MAX_AGENTS], s_new[MAX_AGENTS];
+	struct Actions_ID a;
+	int s, s_new;
 	float max_err, err;
-	float r[MAX_AGENTS];
+	float r;
 	int i, curr_s;
 	struct Agent agent;
 	struct Lidar car_sensors[3];
-	int d_l[MAX_AGENTS], d_f[MAX_AGENTS], d_r[MAX_AGENTS]; // lidar distances
+	int d_l, d_f, d_r; // lidar distances
 	int act;
 
 	max_err = 0.0;
 	err = 0.0;
 
 	pthread_mutex_lock(&mux_sensors);
-	for(i = 0; i < MAX_AGENTS; i++) {
-		d_l[i] = sensors[i][0].d;
-		d_f[i] = sensors[i][1].d;
-		d_r[i] = sensors[i][2].d;
-		s[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
-		a[i] = ql_egreedy_policy(s[i]);
-		//printf("action for agent %d is steer: %d, vel: %d\n", i, a[i].steer_act_id, a[i]..vel_act_id);
-	}
+	d_l = sensors[0].d;
+	d_f = sensors[1].d;
+	d_r = sensors[2].d;
+	s = decode_lidar_to_state(d_l, d_r, d_f);
+	a = ql_egreedy_policy(s);
+	//printf("action for agent %d is steer: %d, vel: %d\n", i, a.steer_act_id, a[i]..vel_act_id);
 	pthread_mutex_unlock(&mux_sensors);
 
 	pthread_mutex_lock(&mux_agent);
 	for(i = 0; i < MAX_AGENTS; i++) {
-		agent = agents[i];
-		agent.action.delta = action_to_steering(a[i].steer_act_id);
-		agent.action.a = action_to_acc(a[i].vel_act_id);
+		agent = rl_agent;
+		agent.action.delta = action_to_steering(a.steer_act_id);
+		agent.action.a = action_to_acc(a.vel_act_id);
 		agent.car = update_car_model(agent);
 		
 
 		get_updated_lidars_distance(agent.car, car_sensors);
-		d_l[i] = car_sensors[0].d;
-		d_f[i] = car_sensors[1].d;
-		d_r[i] = car_sensors[2].d;
+		d_l = car_sensors[0].d;
+		d_f = car_sensors[1].d;
+		d_r = car_sensors[2].d;
 
-		s_new[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
-		r[i] = get_reward(agent, d_l[i], d_f[i], d_r[i]);
+		s_new = decode_lidar_to_state(d_l, d_r, d_f);
+		r = get_reward(agent, d_l, d_f, d_r);
 		// update max reward for debug
-		if (r[i] > max_reward)
-			max_reward = r[i];
-		//printf(" reward: %f, action %d \n", max_reward, a[i]);
-		//err = ql_updateQ(s[i], a[i], r[i], s_new[i]);
-		err = ql_updateQ(s[i], a[i], r[i], s_new[i]);
+		if (r > max_reward)
+			max_reward = r;
+		//printf(" reward: %f, action %d \n", max_reward, a);
+		//err = ql_updateQ(s, a, r, s_new);
+		err = ql_updateQ(s, a, r, s_new);
 		// update agent state
-		agent.state = s_new[i];
-		agents[i] = agent;
+		agent.state = s_new;
+		rl_agent = agent;
 		// update max error
 		// needs better handling of error
 		if (err > max_err)
@@ -1674,6 +1664,8 @@ void init_qlearn_training_mode() {
 	n_actions_steer = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
 	n_actions_vel = (int)((MAX_A/G * 2)/ACC_STEP) + 1;
 	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
+	
+	pthread_mutex_lock(&mux_q_matrix);
 	ql_init(n_states, n_actions_steer, n_actions_vel);
 	// modify specific params by calling related function
 	ql_set_learning_rate(0.6);
@@ -1681,6 +1673,7 @@ void init_qlearn_training_mode() {
 	ql_set_expl_factor(0.4);
 	ql_set_expl_range(0.4, 0.1);
 	ql_set_expl_decay(0.99);
+	pthread_mutex_unlock(&mux_q_matrix);
 	printf("---------\n");
 }
 
@@ -1693,6 +1686,8 @@ void init_qlearn_inference_mode() {
 	n_actions_steer = (int)((MAX_THETA * 2)/ACTIONS_STEP) + 1;
 	n_actions_vel = (int)((MAX_A/G * 2)/ACC_STEP) + 1;
 	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
+	
+	pthread_mutex_lock(&mux_q_matrix);
 	ql_init(n_states, n_actions_steer, n_actions_vel);
 	// modify specific params by calling related function
 	ql_set_learning_rate(0.6);
@@ -1700,6 +1695,7 @@ void init_qlearn_inference_mode() {
 	ql_set_expl_factor(0.0);
 	ql_set_expl_range(0.0, 0.0);
 	ql_set_expl_decay(0.99);
+	pthread_mutex_unlock(&mux_q_matrix);
 	printf("---------\n");
 }
 
@@ -1729,6 +1725,8 @@ void save_Q_matrix_to_file() {
 	FILE *fp;
 	int n_states, n_actions;
 	int i, j;
+
+	pthread_mutex_lock(&mux_q_matrix);
 	n_states = ql_get_nstates();
 	n_actions = ql_get_nactions();
 	float Q_tmp[n_states][n_actions];
@@ -1738,6 +1736,7 @@ void save_Q_matrix_to_file() {
 			Q_tmp[i][j] = ql_get_Q(i, j);
 		}
 	}
+	pthread_mutex_unlock(&mux_q_matrix);
 
 	fp = fopen(Q_MAT_FILE_NAME, "w");
 	if (fp == NULL) {
@@ -1762,6 +1761,8 @@ void save_Q_vel_matrix_to_file() {
 	FILE *fp;
 	int n_states, n_actions;
 	int i, j;
+
+	pthread_mutex_lock(&mux_q_matrix);
 	n_states = ql_get_nstates();
 	n_actions = ql_get_nactions_vel();
 	float Q_tmp[n_states][n_actions];
@@ -1771,6 +1772,7 @@ void save_Q_vel_matrix_to_file() {
 			Q_tmp[i][j] = ql_get_Q_vel(i, j);
 		}
 	}
+	pthread_mutex_unlock(&mux_q_matrix);
 
 	fp = fopen(Q_VEL_MAT_FILE_NAME, "w");
 	if (fp == NULL) {
@@ -1796,6 +1798,8 @@ void save_Tr_matrix_to_file() {
 	FILE *fp;
 	int n_states, n_actions;
 	int i, j;
+
+	pthread_mutex_lock(&mux_q_matrix);
 	n_states = ql_get_nstates();
 	n_actions = ql_get_nactions();
 	float Tr_tmp[n_states][n_actions];
@@ -1805,6 +1809,7 @@ void save_Tr_matrix_to_file() {
 			Tr_tmp[i][j] = ql_get_Tr(i, j);
 		}
 	}
+	pthread_mutex_unlock(&mux_q_matrix);
 
 	fp = fopen(Tr_MAT_FILE_NAME, "w");
 	if (fp == NULL) {
@@ -1837,8 +1842,11 @@ void read_Q_matrix_from_file() {
 	float val;
 	int i, j; // indexes to use for matrix
 
+	pthread_mutex_lock(&mux_q_matrix);
 	n_states = ql_get_nstates();
 	n_actions = ql_get_nactions();
+	pthread_mutex_unlock(&mux_q_matrix);
+
 	i = 0;
 	j = 0;
 	fp = fopen(Q_MAT_FILE_NAME, "r");
@@ -1862,6 +1870,7 @@ void read_Q_matrix_from_file() {
 	}
 
 	size = 1024;
+	pthread_mutex_lock(&mux_q_matrix);
 	while (fgets(q_buff, size, fp) != NULL) {
 		ptr = q_buff;
 		j = 0;
@@ -1872,6 +1881,7 @@ void read_Q_matrix_from_file() {
 		}
 		i++;
 	}
+	pthread_mutex_unlock(&mux_q_matrix);
 	printf("Q matrix restored!\n");
 }
 
@@ -1886,8 +1896,11 @@ void read_Q_vel_matrix_from_file() {
 	float val;
 	int i, j; // indexes to use for matrix
 
+	pthread_mutex_lock(&mux_q_matrix);
 	n_states = ql_get_nstates();
 	n_actions = ql_get_nactions_vel();
+	pthread_mutex_unlock(&mux_q_matrix);
+
 	i = 0;
 	j = 0;
 	fp = fopen(Q_VEL_MAT_FILE_NAME, "r");
@@ -1912,6 +1925,7 @@ void read_Q_vel_matrix_from_file() {
 
 	//printf(" previous Q_vel val: %f \n", ql_get_Q_vel(27,0));
 	size = 1024;
+	pthread_mutex_lock(&mux_q_matrix);
 	while (fgets(q_buff, size, fp) != NULL) {
 		ptr = q_buff;
 		j = 0;
@@ -1922,6 +1936,7 @@ void read_Q_vel_matrix_from_file() {
 		}
 		i++;
 	}
+	pthread_mutex_unlock(&mux_q_matrix);
 	//printf(" new Q_vel val: %f \n", ql_get_Q_vel(27,0));
 	printf("Q_vel matrix restored!\n");
 }
@@ -1936,8 +1951,11 @@ void read_Tr_matrix_from_file() {
 	float val;
 	int i, j; // indexes to use for matrix
 
+	pthread_mutex_lock(&mux_q_matrix);
 	n_states = ql_get_nstates();
 	n_actions = ql_get_nactions();
+	pthread_mutex_unlock(&mux_q_matrix);
+
 	i = 0;
 	j = 0;
 	fp = fopen(Tr_MAT_FILE_NAME, "r");
@@ -1961,6 +1979,7 @@ void read_Tr_matrix_from_file() {
 	}
 
 	size = 1024;
+	pthread_mutex_lock(&mux_q_matrix);
 	while (fgets(tr_buff, size, fp) != NULL) {
 		ptr = tr_buff;
 		j = 0;
@@ -1970,79 +1989,80 @@ void read_Tr_matrix_from_file() {
 		}
 		i++;
 	}
-	
+	pthread_mutex_unlock(&mux_q_matrix);
+
 	printf("T_r Matrix restored!\n");
 }
 
 // handles learning under the single thread mode
 void single_thread_learning() {
-	struct Actions_ID a[MAX_AGENTS];
-	int s[MAX_AGENTS], s_new[MAX_AGENTS];
+	struct Actions_ID a;
+	int s, s_new;
 	float err;
-	float r[MAX_AGENTS];
+	float r;
 	int i;
 	float act;
 	struct Agent agent;
 	struct Lidar car_sensors[3];
-	int d_l[MAX_AGENTS], d_f[MAX_AGENTS], d_r[MAX_AGENTS]; // lidar distances
+	int d_l, d_f, d_r; // lidar distances
 	float updated_distance;
 	int train_only_steering = ql_get_train_mode();
 
 	err = 0.0;
 	pthread_mutex_lock(&mux_agent);
-	for(i = 0; i < MAX_AGENTS; i++) {
-		agent = agents[i];
-		// learn only if the agent is still alive
-		if (agent.alive == 0)
-			continue;
+	agent = rl_agent;
+	pthread_mutex_unlock(&mux_agent);
+	// learn only if the agent is still alive
+	if (agent.alive == 0)
+		return;
 
-		a[i] = ql_egreedy_policy(agent.state);
-		// backup last iteration delta steering
-		rwd_previous_delta = agent.action.delta;
-		agent.action.delta = action_to_steering(a[i].steer_act_id);
-		if (train_only_steering)
-			agent.action.a = 0.0;
-		else
-			agent.action.a = action_to_acc(a[i].vel_act_id);
-		// Sarsa
-		//agent.action.delta = action_to_steering(agent.a_id);
-		agent.car = update_car_model(agent);
-		// find distance of agent on track
-		updated_distance = agent.distance + sqrt(pow((agents[i].car.x - agent.car.x), 2) + pow((agents->car.y - agent.car.y), 2));
-		agent.distance = updated_distance;
-		get_updated_lidars_distance(agent.car, car_sensors);
-		d_l[i] = car_sensors[0].d;
-		d_f[i] = car_sensors[1].d;
-		d_r[i] = car_sensors[2].d;
+	a = ql_egreedy_policy(agent.state);
+	// backup last iteration delta steering
+	rwd_previous_delta = agent.action.delta;
+	agent.action.delta = action_to_steering(a.steer_act_id);
+	if (train_only_steering)
+		agent.action.a = 0.0;
+	else
+		agent.action.a = action_to_acc(a.vel_act_id);
+	// Sarsa
+	//agent.action.delta = action_to_steering(agent.a_id);
+	agent.car = update_car_model(agent);
+	// find distance of agent on track
+	updated_distance = agent.distance + sqrt(pow((rl_agent.car.x - agent.car.x), 2) + pow((rl_agent.car.y - agent.car.y), 2));
+	agent.distance = updated_distance;
+	get_updated_lidars_distance(agent.car, car_sensors);
+	d_l = car_sensors[0].d;
+	d_f = car_sensors[1].d;
+	d_r = car_sensors[2].d;
 
-		s[i] = agent.state;
-		// Sarsa
-		//a[i] = agent.a_id;
-		s_new[i] = decode_lidar_to_state(d_l[i], d_r[i], d_f[i]);
+	s = agent.state;
+	// Sarsa
+	//a[i] = agent.a_id;
+	s_new = decode_lidar_to_state(d_l, d_r, d_f);
 
-		r[i] = get_reward(agent, d_l[i], d_f[i], d_r[i]);
-		//printf("r: %f \n", r[i]);
-		// update max reward for debug
-		if (r[i] > max_reward)
-			max_reward = r[i];
-		// Q Learning
-		err = ql_updateQ(s[i], a[i], r[i], s_new[i]);
-		// Q(lambda) Learning
-		//err = ql_lambda_updateQ(s[i], a[i], r[i], s_new[i]);
-		//printf("s_new: %d, a: %d, s: %d, r: %f \n", s[i], a[i], s[i], r[i]);
-		// Sarsa algorithm
-		//int a_new = ql_egreedy_policy(s_new[i]);
-		//err = updateQ_sarsa(s[i], a[i], r[i], s_new[i], a_new);
+	r = get_reward(agent, d_l, d_f, d_r);
+	//printf("r: %f \n", r);
+	// update max reward for debug
+	if (r > max_reward)
+		max_reward = r;
+	// Q Learning
+	err = ql_updateQ(s, a, r, s_new);
+	// Q(lambda) Learning
+	//err = ql_lambda_updateQ(s, a, r, s_new);
+	//printf("s_new: %d, a: %d, s: %d, r: %f \n", s, a, s, r);
+	// Sarsa algorithm
+	//int a_new = ql_egreedy_policy(s_new);
+	//err = updateQ_sarsa(s, a, r, s_new, a_new);
 
-		// update agent state
-		agent.state = s_new[i];
-		agent.a_id = a[i];
-		agent.ep_stats.steps++;
-		agent.ep_stats.total_reward += r[i];
-		agent.ep_stats.total_td_error += err;
+	// update agent state
+	agent.state = s_new;
+	agent.a_id = a;
+	agent.ep_stats.steps++;
+	agent.ep_stats.total_reward += r;
+	agent.ep_stats.total_td_error += err;
 
-		agents[i] = agent;
-	}
+	pthread_mutex_lock(&mux_agent);
+	rl_agent = agent;
 	pthread_mutex_unlock(&mux_agent);
 }
 
