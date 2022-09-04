@@ -178,6 +178,7 @@ int end = 0;
 char debug[LEN];
 float rwd_distance_counter = 0.0;
 float rwd_previous_delta = 0.0;
+int single_task_learning = 1;
 
 struct Lidar sensors[3];
 int disable_sensors = 0;
@@ -247,7 +248,7 @@ float action_to_steering(int action_k);
 float action_to_acc(int action_a);
 int decode_lidar_to_state(int d_left, int d_right, int d_front);
 float get_reward(struct Agent agent, int d_left, int d_front, int d_right);
-float learn_to_drive();
+struct Agent learn_to_drive(struct Agent old_agent);
 void single_thread_learning();
 
 void save_episodes_stats_to_file();

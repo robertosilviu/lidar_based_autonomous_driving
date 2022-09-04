@@ -9,14 +9,13 @@
 
 
 int main() {
-	int ret, mode;
+	int ret;
 	printf("\n*** Starting app\n");
 
 	init();
 	//printf("here app...\n");
-	mode = ql_get_rl_mode();
 
-	if (mode == TRAINING) {
+	if (single_task_learning) {
 		ret = wait_for_task(LEARNING_ID);
 	} else {
 		ret = wait_for_task(GRAPHICS_ID);
@@ -25,7 +24,7 @@ int main() {
 		ret = wait_for_task(SENSORS_ID);
 	}
 	if(ret != 0) {
-		printf("ERROR: error while waiting for thread\n");
+		printf("ERROR: error while waiting for task\n");
 	}
 	//readkey();
 	destroy_bitmap(track_bmp);
@@ -36,7 +35,7 @@ int main() {
 }
 
 void init() {
-	int w, h, i, mode;
+	int w, h;
 	allegro_init();
 	install_keyboard();
 
@@ -82,9 +81,9 @@ void init() {
 	refresh_sensors();
 	update_scene();
 	
-	mode = ql_get_rl_mode();
+	//mode = ql_get_rl_mode();
 
-	if (mode == TRAINING) {
+	if (single_task_learning) {
 		task_create(learning_task, LEARNING_ID, LEARNING_PER, LEARNING_DLR, LEARNING_PRIO);
 	} else {
 		task_create(display_task, GRAPHICS_ID, GRAPHICS_PER, GRAPHICS_DLR, GRAPHICS_PRIO);
@@ -133,7 +132,6 @@ void draw_track() {
 // rotate car sprite and display inside the scene 
 void draw_car() {
 	int points[8];
-	int i;
 	struct ViewPoint vertices[4];
 	
 	pthread_mutex_lock(&mux_agent);
@@ -191,7 +189,7 @@ void find_rect_vertices(struct ViewPoint vertices[], int size, struct Car car) {
 
 // draw the lidar beams on the TRACK sprite
 void draw_sensors() {
-	int x, y, i;
+	int x, y;
 	int col;
 	struct Lidar lidar;
 
@@ -221,7 +219,7 @@ void draw_sensors() {
 // if there are collisions return 1, otherwise returns 0
 void crash_check() {
 	int found;
-	int i, k; // used for for cycles
+	int k; // used for for cycles
 	int dead_agent;
 	struct Car new_car;
 	struct ViewPoint vertices[4];
@@ -335,7 +333,7 @@ void show_rl_graph() {
 	// circle radius
 	int r = 3;
 	struct Agent agent;
-	struct Actions_ID best_act, agent_act;
+	struct Actions_ID best_act;
 	float act_values[BUF_LEN];
 
 	struct ViewPoint p1;
@@ -442,6 +440,7 @@ void* display_task(void* arg) {
 	return NULL;
 }
 
+/*
 // handles the agent thread
 void* agent_task(void* arg) {
 	int i, j, alive_flag, mode;
@@ -503,10 +502,137 @@ void* agent_task(void* arg) {
 
 	return NULL;
 }
+*/
+
+void* agent_task(void* arg) {
+	int i, alive_flag, index;
+	//float progress = 0.0;
+	struct Car new_car;
+	// agent data
+	int s;
+	struct Actions_ID a;
+	struct Agent updated_agent, old_agent;
+	// lidars distance
+	int d_l, d_r, d_f; 
+	int train_only_steering = ql_get_train_mode();
+
+	i = get_task_index(arg);
+	set_activation(i);
+
+	pthread_mutex_lock(&mux_sensors);
+	d_l = sensors[0].d;
+	d_f = sensors[1].d;
+	d_r = sensors[2].d;
+	pthread_mutex_unlock(&mux_sensors);
+
+	s = decode_lidar_to_state(d_l, d_r, d_f);
+
+	pthread_mutex_lock(&mux_q_matrix);
+	a = ql_egreedy_policy(s);
+	//rl_agent.state = s;
+	//rl_agent.a_id = a;
+	pthread_mutex_unlock(&mux_q_matrix);
+
+	pthread_mutex_lock(&mux_agent);
+	old_agent = rl_agent;
+	pthread_mutex_unlock(&mux_agent);
+
+	old_agent.state = s;
+	old_agent.a_id = a;
+	
+	do {
+		crash_check();
+		// interrupt training after driving on whole track
+		// for certain amount of meters
+		if (old_agent.distance > 1200)
+			old_agent.alive = 0;
+
+		alive_flag = 0;
+		// need to update agent when crash occured
+		updated_agent = learn_to_drive(old_agent);
+	
+		index = episode-1;
+		statistics[index] = updated_agent.ep_stats;
+		// reset dead agent
+		//pthread_mutex_lock(&mux_agent);
+		if (updated_agent.alive == 1) {
+			alive_flag = 1;
+		}
+
+		// no agent alive, start new episode
+		if(alive_flag == 0) {
+			episode++;
+			
+			//if(((episode%200) == 0) && (episode > 100))
+			//	ql_reduce_expl();
+
+			if((episode%100) == 0) {
+				// q-learn
+				pthread_mutex_lock(&mux_q_matrix);
+				ql_reduce_expl();
+				pthread_mutex_lock(&mux_q_matrix);
+				// change initial position to improve training
+				pool_index = (pool_index + 1) % POOL_DIM;
+				printf("Changing initial pose!\n");
+			}
+
+			updated_agent.alive = 1;
+			updated_agent.distance = 0.0;
+			// should consider mux
+			rwd_distance_counter = 0.0;
+			
+			// train_mode=1 -> train only steering
+			if (train_only_steering)
+				new_car.v = MAX_V_ALLOWED;
+			else
+				new_car.v = TRAIN_VEL;
+			new_car.x = pose_pool[pool_index][0];
+			new_car.y = pose_pool[pool_index][1];
+			new_car.theta = pose_pool[pool_index][2];
+			
+			updated_agent.car = new_car;
+
+			// reset episode stats
+			struct EpisodeStats stats;
+			stats.steps = 0;
+			stats.total_reward = 0.0;
+			stats.total_td_error = 0.0;
+
+			updated_agent.ep_stats = stats;
+			//printf("Reset agent %d!\n", j);
+
+			// refresh sensors with initial pose
+			refresh_sensors();
+			// update initial state for learning
+			d_l = sensors[0].d;
+			d_f = sensors[1].d;
+			d_r = sensors[2].d;
+			s = decode_lidar_to_state(d_l, d_r, d_f);
+			a = ql_egreedy_policy(s);
+			updated_agent.state = s;
+			updated_agent.a_id = a;
+		}
+		pthread_mutex_lock(&mux_agent);
+		rl_agent = updated_agent;
+		pthread_mutex_unlock(&mux_agent);
+		//pthread_mutex_unlock(&mux_agent);
+		
+		deadline_miss(AGENT_ID);
+		wait_for_activation(i);
+	} while (!end);
+	// save Q learning matrix on file for further use
+	save_Q_matrix_to_file();
+	save_Q_vel_matrix_to_file();
+	save_Tr_matrix_to_file();
+	// save episodes statistics on file for further analysis 
+	save_episodes_stats_to_file();
+
+	return NULL;
+}
 
 // handles the learning thread
 void* learning_task(void* arg) {
-	int i, j, alive_flag, index;
+	int i, alive_flag, index;
 	//float progress = 0.0;
 	struct Car new_car;
 	char scan;
@@ -814,7 +940,6 @@ char get_scancode() {
 // initialize agent structure with the initial conditions on track
 void init_agent() {
 	struct Car vehicle;
-	int i;
 	int train_only_steering = ql_get_train_mode();
 	
 	printf("*** Initializing agent\n");
@@ -1034,14 +1159,13 @@ void show_Q_matrix() {
 	int MAX_FLOAT_SIZE =6;
 	int DEBUG_SIZE = 200;
 	int N_ACTIONS_STEER, N_ACTIONS_VEL;
-	struct Actions_ID best_act, agent_act;
+	struct Actions_ID best_act;
 	char debug[DEBUG_SIZE];
 	char action_buff[12];
-	int white, green, yellow, blue;
+	int white, green, blue;
 
 	white = makecol(255,255,255);
 	green = makecol(0,255,0);
-	yellow = makecol(255,255,0);
 	blue = makecol(100,149,237);
 
 	// find number of actions
@@ -1100,7 +1224,6 @@ void show_Q_matrix() {
 
 // update the distance measured by lidars at each timestamp
 void refresh_sensors() {
-	int i;
 	struct Lidar lidar;
 	struct Car car;
 	struct Lidar tmp_sensors[3];
@@ -1222,7 +1345,8 @@ struct Car update_car_model(struct Agent agent) {
 	float vx, vy, dt;
 	float omega;
 	// /float friction;
-	float norm_theta, theta_deg;
+	float norm_theta;
+	//float theta_deg; // should be cancelled
 	float max_v;
 
 	(MAX_V > MAX_V_ALLOWED) ? (max_v = MAX_V_ALLOWED) : (max_v = MAX_V);
@@ -1298,9 +1422,7 @@ struct Car update_car_model(struct Agent agent) {
 void write_debug() {
 	int white, yellow;
 	int x, y;
-	int i;
 	int index;
-	int mode;
 	struct Agent agent;
 	
 	x = 0;
@@ -1460,16 +1582,15 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	float r = 0;
 	//int d_left, d_front, d_right;
 	//struct Agent agent;
-	float track_pos, track_center; // distance between car's (x,y) and centre of track
+	float track_pos; // distance between car's (x,y) and centre of track
 	float x, y, alpha;
 	//float vx, vy, ca, sa;
 	int d_l, d_r;
-	float dist;
 	int train_only_steering = ql_get_train_mode();
 	float old_steer_delta, new_steer_delta;
+	float variance;
 
 	track_pos = 0.0;
-	dist = 0.0;
 	
 	// compute left distance perpendicular to car's (x,y) 
 	alpha = agent.car.theta + deg_to_rad(90.0);
@@ -1482,7 +1603,6 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	y = SIM_Y - (BTM_Y + agent.car.y/SCALE);
 	d_r = read_sensor(x, y, alpha);
 	
-	track_center = (d_l + d_r)/2;
 	track_pos = fabs(d_l - d_r);
 	//printf("d_l: %d, d_r: %d \n", d_l, d_r);
 	// compute distance from track centre
@@ -1502,7 +1622,7 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 	
 	// if car has crashed return bad reward
 	if (is_car_offtrack(agent.car)) {
-		return RWD_CRASH;
+		r = RWD_CRASH;
 	} else {
 		// TO-DO
 		// 1) add reward based of distance from track centre
@@ -1534,10 +1654,10 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		// compute reward in relation with the variation of delta steering
 		old_steer_delta = rad_to_deg(rwd_previous_delta);
 		new_steer_delta = rad_to_deg(agent.action.delta);
-		float variance = fabs((old_steer_delta - new_steer_delta)/MAX_THETA);
+		variance = fabs((old_steer_delta - new_steer_delta)/MAX_THETA);
 		//printf("variance: %f, reward: %f\n", variance, (variance*RWD_STEER_DELTA_GAP));
 		//printf("old steer: %f, new steer: %f \n", old_steer_delta, new_steer_delta);
-		//r += RWD_STEER_DELTA_GAP * variance;
+		r += RWD_STEER_DELTA_GAP * variance;
 		//printf("r: %f, dist: %f\n", r, dist);
 
 		// don't consider the acceleration related reward change
@@ -1561,29 +1681,6 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 		//}
 		
 		//printf("r: %f\n", r);
-		return r;
-		// check if it should be deleted
-		// reward for correct turn
-		if (d_right > d_left) {
-			if (agent.action.delta < 0)
-				r += RWD_CORRECT_TURN * fabs(agent.action.delta);
-			else
-				r += RWD_WRONG_TURN;
-		}
-		if (d_right < d_left) {
-			if (agent.action.delta > 0)
-				r += RWD_CORRECT_TURN * fabs(agent.action.delta);
-			else
-				r += RWD_WRONG_TURN;
-		}
-		
-		// reward for no turn on straight
-		if ((d_front > d_left) && (d_front > d_right)) {
-			if (fabs(agent.action.delta) < deg_to_rad(5))
-				r += RWD_STRAIGHT/(1 - fabs(agent.action.delta));
-			else
-				r += RWD_TURN_STRAIGHT/(1 - fabs(agent.action.delta));
-		}
 		// reward for keeping the car near the center
 		// off centre decreses reward
 		//r -= track_pos;
@@ -1596,62 +1693,60 @@ float get_reward(struct Agent agent, int d_left, int d_front, int d_right) {
 }
 
 // multi thread learning algorithm
-float learn_to_drive() {
+struct Agent learn_to_drive(struct Agent old_agent) {
 	struct Actions_ID a;
 	int s, s_new;
-	float max_err, err;
+	float err;
 	float r;
-	int i, curr_s;
 	struct Agent agent;
 	struct Lidar car_sensors[3];
 	int d_l, d_f, d_r; // lidar distances
-	int act;
+	float updated_distance;
+	// no mux required because is set on compilation time
+	int train_only_steering = ql_get_train_mode();
 
-	max_err = 0.0;
 	err = 0.0;
+	agent = old_agent;
+	// learn only if the agent is still alive
+	if (agent.alive == 0)
+		return old_agent;
 
-	pthread_mutex_lock(&mux_sensors);
-	d_l = sensors[0].d;
-	d_f = sensors[1].d;
-	d_r = sensors[2].d;
-	s = decode_lidar_to_state(d_l, d_r, d_f);
-	a = ql_egreedy_policy(s);
-	//printf("action for agent %d is steer: %d, vel: %d\n", i, a.steer_act_id, a[i]..vel_act_id);
-	pthread_mutex_unlock(&mux_sensors);
+	pthread_mutex_lock(&mux_q_matrix);
+	a = ql_egreedy_policy(agent.state);
 
-	pthread_mutex_lock(&mux_agent);
-	for(i = 0; i < MAX_AGENTS; i++) {
-		agent = rl_agent;
-		agent.action.delta = action_to_steering(a.steer_act_id);
+	// backup last iteration delta steering
+	rwd_previous_delta = agent.action.delta;
+	agent.action.delta = action_to_steering(a.steer_act_id);
+	if (train_only_steering)
+		agent.action.a = 0.0;
+	else
 		agent.action.a = action_to_acc(a.vel_act_id);
-		agent.car = update_car_model(agent);
-		
+	
+	agent.car = update_car_model(agent);
+	// find distance of agent on track
+	updated_distance = agent.distance + sqrt(pow((old_agent.car.x - agent.car.x), 2) + pow((old_agent.car.y - agent.car.y), 2));
+	agent.distance = updated_distance;
+	get_updated_lidars_distance(agent.car, car_sensors);
+	d_l = car_sensors[0].d;
+	d_f = car_sensors[1].d;
+	d_r = car_sensors[2].d;
 
-		get_updated_lidars_distance(agent.car, car_sensors);
-		d_l = car_sensors[0].d;
-		d_f = car_sensors[1].d;
-		d_r = car_sensors[2].d;
+	s = agent.state;
+	s_new = decode_lidar_to_state(d_l, d_r, d_f);
 
-		s_new = decode_lidar_to_state(d_l, d_r, d_f);
-		r = get_reward(agent, d_l, d_f, d_r);
-		// update max reward for debug
-		if (r > max_reward)
-			max_reward = r;
-		//printf(" reward: %f, action %d \n", max_reward, a);
-		//err = ql_updateQ(s, a, r, s_new);
-		err = ql_updateQ(s, a, r, s_new);
-		// update agent state
-		agent.state = s_new;
-		rl_agent = agent;
-		// update max error
-		// needs better handling of error
-		if (err > max_err)
-			max_err = err;
-	}
-	pthread_mutex_unlock(&mux_agent);
+	r = get_reward(agent, d_l, d_f, d_r);
+	// Q Learning
+	err = ql_updateQ(s, a, r, s_new);
+	pthread_mutex_unlock(&mux_q_matrix);
 
-	// error handling is wrong !!  needs to be changed
-	return max_err;
+	// update agent state
+	agent.state = s_new;
+	agent.a_id = a;
+	agent.ep_stats.steps++;
+	agent.ep_stats.total_reward += r;
+	agent.ep_stats.total_td_error += err;
+
+	return agent;
 }
 
 // initialize hyper parameters used by the Q-Learning algorithm
@@ -2000,8 +2095,6 @@ void single_thread_learning() {
 	int s, s_new;
 	float err;
 	float r;
-	int i;
-	float act;
 	struct Agent agent;
 	struct Lidar car_sensors[3];
 	int d_l, d_f, d_r; // lidar distances

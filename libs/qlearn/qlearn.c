@@ -402,7 +402,6 @@ struct Actions_ID ql_egreedy_policy(int s) {
 }
 
 float ql_updateQ(int s, struct Actions_ID a, float r, int snew) {
-	float q_target;	// target Q value
 	float td_err;	// TD error
 
 	td_err = ql_updateQ_steer(s, a.steer_act_id, r, snew);
