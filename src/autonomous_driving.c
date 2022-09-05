@@ -421,7 +421,7 @@ void* display_task(void* arg) {
 	i = get_task_index(arg);
 	set_activation(i);
 
-	while(!end) {
+	do {
 		//action.a = 0.0;
 		//action.delta = 0;
 
@@ -435,7 +435,7 @@ void* display_task(void* arg) {
 
 		deadline_miss(GRAPHICS_ID);
 		wait_for_activation(i);
-	}
+	} while (!end);
 
 	return NULL;
 }
@@ -529,19 +529,22 @@ void* agent_task(void* arg) {
 
 	pthread_mutex_lock(&mux_q_matrix);
 	a = ql_egreedy_policy(s);
+	pthread_mutex_unlock(&mux_q_matrix);
 	//rl_agent.state = s;
 	//rl_agent.a_id = a;
-	pthread_mutex_unlock(&mux_q_matrix);
 
+	// initialize state,action for qLearn
 	pthread_mutex_lock(&mux_agent);
-	old_agent = rl_agent;
+	rl_agent.state = s;
+	rl_agent.a_id = a;
 	pthread_mutex_unlock(&mux_agent);
-
-	old_agent.state = s;
-	old_agent.a_id = a;
 	
 	do {
 		crash_check();
+
+		pthread_mutex_lock(&mux_agent);
+		old_agent = rl_agent;
+		pthread_mutex_unlock(&mux_agent);
 		// interrupt training after driving on whole track
 		// for certain amount of meters
 		if (old_agent.distance > 1200)
@@ -570,7 +573,7 @@ void* agent_task(void* arg) {
 				// q-learn
 				pthread_mutex_lock(&mux_q_matrix);
 				ql_reduce_expl();
-				pthread_mutex_lock(&mux_q_matrix);
+				pthread_mutex_unlock(&mux_q_matrix);
 				// change initial position to improve training
 				pool_index = (pool_index + 1) % POOL_DIM;
 				printf("Changing initial pose!\n");
@@ -600,17 +603,17 @@ void* agent_task(void* arg) {
 
 			updated_agent.ep_stats = stats;
 			//printf("Reset agent %d!\n", j);
-
+			// maybe it should be outside in multithread
 			// refresh sensors with initial pose
 			refresh_sensors();
 			// update initial state for learning
-			d_l = sensors[0].d;
-			d_f = sensors[1].d;
-			d_r = sensors[2].d;
-			s = decode_lidar_to_state(d_l, d_r, d_f);
-			a = ql_egreedy_policy(s);
-			updated_agent.state = s;
-			updated_agent.a_id = a;
+			//d_l = sensors[0].d;
+			//d_f = sensors[1].d;
+			//d_r = sensors[2].d;
+			//s = decode_lidar_to_state(d_l, d_r, d_f);
+			//a = ql_egreedy_policy(s);
+			//updated_agent.state = s;
+			//updated_agent.a_id = a;
 		}
 		pthread_mutex_lock(&mux_agent);
 		rl_agent = updated_agent;
@@ -1356,7 +1359,7 @@ struct Car update_car_model(struct Agent agent) {
 	//for(i = 0; i < MAX_AGENTS; i++) {
 	old_state = agent.car;
 	act = agent.action;
-
+	
 	// CENTRE OF MASS
 	/*
 	old_state.v = old_state.v + act.a*dt;
@@ -1506,6 +1509,10 @@ void write_debug() {
 	memset(debug, 0, sizeof debug);
 	sprintf(debug,"max v allowed: %f m/s", MAX_V_ALLOWED);
 	textout_ex(debug_bmp, font, debug, x, 170, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"alive flag: %d", agent.alive);
+	textout_ex(debug_bmp, font, debug, x, 180, white, -1);
 
 	index = episode - 1;
 	memset(debug, 0, sizeof debug);
@@ -1709,7 +1716,14 @@ struct Agent learn_to_drive(struct Agent old_agent) {
 	agent = old_agent;
 	// learn only if the agent is still alive
 	if (agent.alive == 0)
-		return old_agent;
+		return agent;
+
+	pthread_mutex_lock(&mux_sensors);
+	d_l = sensors[0].d;
+	d_f = sensors[1].d;
+	d_r = sensors[2].d;
+	s = decode_lidar_to_state(d_l, d_r, d_f);
+	pthread_mutex_unlock(&mux_sensors);
 
 	pthread_mutex_lock(&mux_q_matrix);
 	a = ql_egreedy_policy(agent.state);
@@ -1722,7 +1736,9 @@ struct Agent learn_to_drive(struct Agent old_agent) {
 	else
 		agent.action.a = action_to_acc(a.vel_act_id);
 	
+	//printf("old theta: %f\n", agent.car.theta);
 	agent.car = update_car_model(agent);
+	//printf("new theta: %f\n", agent.car.theta);
 	// find distance of agent on track
 	updated_distance = agent.distance + sqrt(pow((old_agent.car.x - agent.car.x), 2) + pow((old_agent.car.y - agent.car.y), 2));
 	agent.distance = updated_distance;
@@ -1731,7 +1747,7 @@ struct Agent learn_to_drive(struct Agent old_agent) {
 	d_f = car_sensors[1].d;
 	d_r = car_sensors[2].d;
 
-	s = agent.state;
+	//s = agent.state;
 	s_new = decode_lidar_to_state(d_l, d_r, d_f);
 
 	r = get_reward(agent, d_l, d_f, d_r);
