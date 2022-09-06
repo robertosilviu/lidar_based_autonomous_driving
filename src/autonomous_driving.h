@@ -38,7 +38,7 @@
 #define XCEN_SIM (SIM_X/2)
 #define YCEN_SIM (SIM_Y/2)
 #define SCALE 0.16 // 1px = 0.16m
-#define T_SCALE 20.0
+#define T_SCALE 10.0
 
 #define INIT_CAR_X 570
 #define INIT_CAR_Y 650
@@ -93,7 +93,7 @@
 #define LEARNING_ID 4
 #define LEARNING_PRIO 10
 #define LEARNING_PER 70	// ms
-#define LEARNING_DLR 50
+#define LEARNING_DLR 70
 // handles sensors reading
 #define SENSORS_ID 3
 #define SENSORS_PRIO 10
@@ -223,7 +223,6 @@ void update_scene();
 void reset_scene();
 void show_dmiss();
 void show_rl_graph();
-void show_Q_matrix();
 void show_gui_interaction_instructions();
 //------------------------------- Tasks --------------------------------------
 void* comms_task(void* arg);
@@ -257,8 +256,6 @@ void save_Q_matrix_to_file();
 void read_Q_matrix_from_file();
 void save_Q_vel_matrix_to_file();
 void read_Q_vel_matrix_from_file();
-void save_Tr_matrix_to_file();
-void read_Tr_matrix_from_file();
 void init_pool_poses();
 //-------------------------------- UTILS --------------------------------------
 void find_rect_vertices(struct ViewPoint vertices[], int size, struct Car car);
