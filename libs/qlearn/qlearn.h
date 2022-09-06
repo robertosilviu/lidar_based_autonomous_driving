@@ -49,7 +49,6 @@ void ql_set_expl_decay(float d);
 void ql_set_expl_factor(float e);
 void ql_set_Q_matrix(int s, int a, float val);
 void ql_set_Q_vel_matrix(int s, int a, float val);
-void ql_set_Tr_matrix(int s, int a, float val);
 void ql_set_rl_mode(int val);
 void ql_set_train_mode(int val);
 
@@ -59,7 +58,6 @@ float ql_get_expl_decay();
 float ql_get_epsilon();
 float ql_get_Q(int s, int a);
 float ql_get_Q_vel(int s, int a);
-float ql_get_Tr(int s, int a);
 int ql_get_nstates();
 int ql_get_nactions();
 int ql_get_nactions_vel();
@@ -76,9 +74,6 @@ struct Actions_ID ql_egreedy_policy(int s);
 float ql_updateQ(int s, struct Actions_ID a, float r, int snew);
 float ql_updateQ_steer(int s, int a, float r, int snew);
 float ql_updateQ_vel(int s, int a, float r, int snew);
-
-float ql_lambda_updateQ(int s, int a, float r, int snew);
-float updateQ_sarsa(int s, int a, float r, int snew, int anew);
 
 float frand(float xmin, float xmax);
 #endif

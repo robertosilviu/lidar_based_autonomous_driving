@@ -17,7 +17,6 @@ static float norm_eps = 1.0;			// normal exploration probability
 static float ini_eps;					// initial exploration probability
 static float fin_eps;					// final exploration probability
 static float epsilon;					// actual exploration probability
-static float lambda = 0.3;
 // if mode is INFERENCE return always best actions
 static int mode = TRAINING;
 static int train_only_steering = 0;
@@ -30,8 +29,6 @@ static float Q[MAX_STATES][MAX_ACTIONS];
 
 // Q matrix related to velocity
 static float Q_vel[MAX_STATES][MAX_ACTIONS];
-
-static float T_r[MAX_STATES][MAX_ACTIONS];
 
 float frand(float xmin, float xmax) {
 	float range;
@@ -84,15 +81,6 @@ void ql_init(int ns, int na, int na_vel) {
 			//printf("s: %d, a: %d\n", s, a);
 			// steer
 			Q_vel[s][a] = 0.0;
-		}
-	}
-
-	// Q(lambda) learning
-	for(s = 0; s < n_states; s++) {
-		for(a = 0; a < n_actions; a++) {
-			//printf("s: %d, a: %d\n", s, a);
-			T_r[s][a] = 0.0;
-			// TO-DO see if some changes are required for Q_vel
 		}
 	}
 }
@@ -151,21 +139,6 @@ void ql_set_Q_vel_matrix(int s, int a, float val) {
 	}
 
 	Q_vel[s][a] = val;
-}
-
-void ql_set_Tr_matrix(int s, int a, float val) {
-
-	if (s >= n_states) {
-		printf("ERROR: current state index greater than STATES dimension: %d > %d\n", s, n_states);
-		exit(1);
-	}
-
-	if (a >= n_actions) {
-		printf("ERROR: current action index greater than ACTIONS dimension: %d > %d\n", a, n_actions);
-		exit(1);
-	}
-
-	T_r[s][a] = val;
 }
 
 void ql_set_rl_mode(int val) {
@@ -233,20 +206,6 @@ float ql_get_Q_vel(int s, int a) {
 	}
 
 	return Q_vel[s][a];
-}
-
-float ql_get_Tr(int s, int a) {
-	if (s >= n_states) {
-		printf("ERROR: current state index greater than STATES dimension: %d > %d\n", s, n_states);
-		exit(1);
-	}
-
-	if (a >= n_actions) {
-		printf("ERROR: current action index greater than ACTIONS dimension: %d > %d\n", a, n_actions);
-		exit(1);
-	}
-
-	return T_r[s][a];
 }
 
 int ql_get_nstates() {
@@ -454,46 +413,4 @@ float ql_updateQ_vel(int s, int a, float r, int snew) {
 	//printf("Q: %f, td_err: %f \n", Q_vel[s][a], td_err);
 
 	return fabs(td_err);
-}
-
-float ql_lambda_updateQ(int s, int a, float r, int snew) {
-	float max_s, max_snew;
-	float e, e_dot;
-	int i, j;
-	float old_q;
-
-	old_q = Q[s][a];
-	max_s = ql_maxQ(s, 0);
-	max_snew = ql_maxQ(snew, 0);
-
-	e_dot = r + gam*max_snew - Q[s][a];
-	e = r + gam*max_snew - max_s;
-
-	for(i = 0; i < n_states; i++) {
-		for(j = 0; j < n_actions; j++) {
-			//printf("s: %d, a: %d\n", s, a);
-			T_r[i][j] = gam*lambda*T_r[i][j];
-			Q[i][j] = Q[i][j] + alpha*T_r[i][j]*e;
-		}
-	}
-
-	Q[s][a] = Q[s][a] + alpha*e_dot;
-	//T_r[s][a] = T_r[s][a] + 1;
-	T_r[s][a] = 1;
-
-	return fabs(Q[s][a] - old_q);
-}
-
-
-float updateQ_sarsa(int s, int a, float r, int snew, int anew) {
-	//float td_err;
-	float old_q;
-	// get action from new state based on e_greedy policy
-	//a_new = ql_egreedy_policy(snew);
-	//printf("s: %d, a: %d \n", s, a);
-	//printf("q: %f \n", Q[s][a]);
-	old_q = Q[s][a];
-	Q[s][a] = Q[s][a] + alpha * (r + gam*Q[snew][anew] - Q[s][a]);
-
-	return fabs(Q[s][a] - old_q);
 }
