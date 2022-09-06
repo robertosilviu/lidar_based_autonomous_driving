@@ -6,7 +6,7 @@
 /*								CONSTANTS									   */
 /*-----------------------------------------------------------------------------*/
 #define PRINTLINE printf("LINE: %d\n", __LINE__)
-#define LEN 50 // length of array of chars
+#define LEN 65 // length of array of chars
 
 #define GRAPH_H 300
 #define GRAPH_W 500
@@ -34,7 +34,7 @@
 
 #define DMISS_H 250
 #define SIM_X 800
-#define SIM_Y 800
+#define SIM_Y 800 //800 before
 #define XCEN_SIM (SIM_X/2)
 #define YCEN_SIM (SIM_Y/2)
 #define SCALE 0.16 // 1px = 0.16m
@@ -86,9 +86,9 @@
 
 // handles agent state update 
 #define AGENT_ID 2
-#define AGENT_PRIO 10
-#define AGENT_PER 35	// ms
-#define AGENT_DLR 35
+#define AGENT_PRIO 15
+#define AGENT_PER 70	// ms
+#define AGENT_DLR 70
 // handles learning process 
 #define LEARNING_ID 4
 #define LEARNING_PRIO 10
@@ -97,15 +97,15 @@
 // handles sensors reading
 #define SENSORS_ID 3
 #define SENSORS_PRIO 10
-#define SENSORS_PER 20	// ms
-#define SENSORS_DLR 20
+#define SENSORS_PER 30	// ms
+#define SENSORS_DLR 30
 // handles neural network
 
 // handles graphics 
 #define GRAPHICS_ID 0
 #define GRAPHICS_PRIO 5
-#define GRAPHICS_PER 25	// ms
-#define GRAPHICS_DLR 25
+#define GRAPHICS_PER 40	// ms
+#define GRAPHICS_DLR 40
 
 #define EPISODES_STATS_FILE_NAME "episodes_stats.txt"
 #define Q_MAT_FILE_NAME "q_matrix.txt"
@@ -163,6 +163,7 @@ struct Agent {
 /*-----------------------------------------------------------------------------*/
 /*								GLOBAL VARIABLES							   */
 /*-----------------------------------------------------------------------------*/
+//static const char *TRACK_FILE = "img/track_4.tga";
 static const char *TRACK_FILE = "img/track_4.tga";
 BITMAP *track_bmp = NULL;
 BITMAP *scene_bmp = NULL;

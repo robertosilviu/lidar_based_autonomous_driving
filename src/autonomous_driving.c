@@ -56,11 +56,13 @@ void init() {
 	// organize app windows
 	// graph window
 	w = WIN_X;
-	h = (WIN_Y - SIM_Y);
+	//h = (WIN_Y - SIM_Y);
+	h = 100;
 	instructions_bmp = create_bitmap(w, h);
 
 	w = WIN_X;
-	h = (WIN_Y - SIM_Y);
+	//h = (WIN_Y - SIM_Y);
+	h = (WIN_Y - SIM_Y - instructions_bmp->h);
 	graph_bmp = create_bitmap(w, h);
 	// keyboard instructions window
 	// deadline window
@@ -97,6 +99,7 @@ void init() {
 // initialize track side of GUI
 void init_scene() {
 	track_bmp = load_bitmap(TRACK_FILE, NULL);
+	//int y;
 	if (track_bmp == NULL) {
 		printf("ERROR: file not found\n");
 		exit(1);
@@ -110,6 +113,8 @@ void init_scene() {
 
 	draw_car();
 
+	//y = instructions_bmp->h + graph_bmp->h;
+	//blit(scene_bmp, screen, 0, 0, 0, y, scene_bmp->w, scene_bmp->h);
 	blit(scene_bmp, screen, 0, 0, 0, WIN_Y-SIM_Y, scene_bmp->w, scene_bmp->h);
 }
 
@@ -326,10 +331,10 @@ int check_color_px_in_line(int x1, int y1, int x0, int y0, int color) {
 void show_rl_graph() {
 	int px_h, px_w;
 	int white, orange, blue, green;
-	int shift_y_axis = 100;
-	int shift_x_axis = 100;
+	int shift_y_axis = 60;
+	int shift_x_axis = 50;
 	// move graph 10px from left margin
-	int x_offset = 10;
+	int x_offset = 50;
 	// circle radius
 	int r = 3;
 	struct Agent agent;
@@ -409,8 +414,40 @@ void show_rl_graph() {
 		line(graph_bmp, p1.x, px_h, p1.x, px_h-8, white);
 		//line(graph_bmp, x_offset, p1.y, x_offset + 8, p1.y, white);
 	}
+	// show legend
+	// not correct!! need changes
+	p1.x = x_offset;
+	p1.y = (graph_bmp->h - 10);
+	circlefill(graph_bmp, p1.x, p1.y, r, green);
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"best action");
+	textout_ex(graph_bmp, font, debug, p1.x+15, p1.y-5, white, -1);
 
-	blit(graph_bmp, screen, 0, 0, 10, 20, graph_bmp->w, graph_bmp->h);
+	p1.x = x_offset + 130;
+	p1.y = (graph_bmp->h - 10);
+	circlefill(graph_bmp, p1.x, p1.y, r, blue);
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"current action");
+	textout_ex(graph_bmp, font, debug, p1.x+15, p1.y-5, white, -1);
+
+	p1.x = x_offset + 280;
+	p1.y = (graph_bmp->h - 10);
+	circlefill(graph_bmp, p1.x, p1.y, r, orange);
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"other actions");
+	textout_ex(graph_bmp, font, debug, p1.x+15, p1.y-5, white, -1);
+
+	p1.x = x_offset + 430;
+	p1.y = (graph_bmp->h - 10);
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"Y axis: value of each action from Q matrix on current state S");
+	textout_ex(graph_bmp, font, debug, p1.x+15, p1.y-5, white, -1);
+
+	memset(debug, 0, sizeof debug);
+	sprintf(debug,"Q[%d]", agent.state);
+	textout_ex(graph_bmp, font, debug, 5, 0, white, -1);
+
+	blit(graph_bmp, screen, 0, 0, 0, instructions_bmp->h + 10, graph_bmp->w, graph_bmp->h);
 }
 
 // handles the display thread
@@ -430,7 +467,7 @@ void* display_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
-		//show_rl_graph();
+		show_rl_graph();
 		//show_gui_interaction_instructions();
 
 		deadline_miss(GRAPHICS_ID);
@@ -745,7 +782,7 @@ void* learning_task(void* arg) {
 		clear_to_color(debug_bmp, 0);
 		write_debug();
 		show_dmiss();
-		//show_rl_graph();
+		show_rl_graph();
 		//show_Q_matrix();
 		show_gui_interaction_instructions();
 
@@ -1122,6 +1159,10 @@ void show_gui_interaction_instructions() {
 	sprintf(buff,"change car's max velocity allowed");
 	textout_ex(instructions_bmp, font, buff, x + 115, y + 60, white, -1);
 
+	// remove to switch between 2 columns and 1 column
+	x = (int)instructions_bmp->w/2;
+	y = y-80; 
+
 	memset(buff, 0, sizeof buff);
 	sprintf(buff,"Key M ");
 	textout_ex(instructions_bmp, font, buff, x, y + 80, yellow, -1);
@@ -1150,7 +1191,7 @@ void show_gui_interaction_instructions() {
 	sprintf(buff,"enable/disable lidar beams drawing");
 	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 140, white, -1);
 
-	rect(instructions_bmp, 5, 5, x + 400, y + 160, blue);
+	rect(instructions_bmp, 0, 0, x + 400, y + 160, blue);
 	blit(instructions_bmp, screen, 0, 0, 10, 10, instructions_bmp->w, instructions_bmp->h);
 }
 
