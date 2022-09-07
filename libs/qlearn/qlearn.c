@@ -19,7 +19,7 @@ static float fin_eps;					// final exploration probability
 static float epsilon;					// actual exploration probability
 // if mode is INFERENCE return always best actions
 static int mode = TRAINING;
-static int train_only_steering = 0;
+static int train_only_steering = 1;
 //----------------------------
 //	QL matrixes
 //----------------------------

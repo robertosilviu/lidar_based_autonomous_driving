@@ -87,18 +87,18 @@
 // handles agent state update 
 #define AGENT_ID 2
 #define AGENT_PRIO 15
-#define AGENT_PER 70	// ms
-#define AGENT_DLR 70
+#define AGENT_PER 20	// ms
+#define AGENT_DLR 20
 // handles learning process 
 #define LEARNING_ID 4
 #define LEARNING_PRIO 10
-#define LEARNING_PER 70	// ms
-#define LEARNING_DLR 70
+#define LEARNING_PER 20	// ms
+#define LEARNING_DLR 20
 // handles sensors reading
 #define SENSORS_ID 3
 #define SENSORS_PRIO 10
-#define SENSORS_PER 30	// ms
-#define SENSORS_DLR 30
+#define SENSORS_PER 20	// ms
+#define SENSORS_DLR 20
 // handles neural network
 
 // handles graphics 
