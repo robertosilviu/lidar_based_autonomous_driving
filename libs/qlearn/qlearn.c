@@ -19,7 +19,7 @@ static float fin_eps;					// final exploration probability
 static float epsilon;					// actual exploration probability
 // if mode is INFERENCE return always best actions
 static int mode = TRAINING;
-static int train_only_steering = 1;
+static int train_only_steering = ONLY_STEER_TRAINING;
 //----------------------------
 //	QL matrixes
 //----------------------------
@@ -151,14 +151,14 @@ void ql_set_rl_mode(int val) {
 }
 
 void ql_set_train_mode(int val) {
-	if ((val != 1) && (val != 0)) {
+	if ((val != ONLY_STEER_TRAINING) && (val != STEER_VEL_TRAINING)) {
 		printf(" INVALID train mode for qlearn library -> %d \n", val);
 		exit(1);
 	}
 
-	if (val == 1)
+	if (val == ONLY_STEER_TRAINING)
 		printf("train_mode is: only STEERING \n");
-	else if (val == 0)
+	else if (val == STEER_VEL_TRAINING)
 		printf("train_mode is: STEERING + ACCELERATION\n");
 	
 	train_only_steering = val;

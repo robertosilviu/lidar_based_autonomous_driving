@@ -37,6 +37,7 @@ void init() {
 	int w, h;
 	allegro_init();
 	install_keyboard();
+	int rl_mode = INFERENCE;
 
 	set_color_depth(BITS_COL);
 	set_gfx_mode(GFX_AUTODETECT_WINDOWED, WIN_X, WIN_Y, 0, 0);
@@ -83,7 +84,11 @@ void init() {
 	init_pool_poses();
 	// Q learning related
 	init_agent();
-	init_qlearn_training_mode();
+	assert((rl_mode == TRAINING) || (rl_mode == INFERENCE));
+	if (rl_mode == TRAINING)
+		init_qlearn_training_mode();
+	else
+		init_qlearn_inference_mode();
 	// track window
 	init_scene();
 	refresh_sensors();
@@ -492,7 +497,7 @@ void* agent_task(void* arg) {
 	struct Agent updated_agent, old_agent;
 	// lidars distance
 	int d_l, d_r, d_f; 
-	int train_only_steering = ql_get_train_mode();
+	int train_only_steering;
 
 	i = get_task_index(arg);
 	set_activation(i);
@@ -507,6 +512,7 @@ void* agent_task(void* arg) {
 
 	pthread_mutex_lock(&mux_q_matrix);
 	a = ql_egreedy_policy(s);
+	train_only_steering = ql_get_train_mode();
 	pthread_mutex_unlock(&mux_q_matrix);
 
 	// initialize state,action for qLearn
@@ -621,7 +627,7 @@ void* learning_task(void* arg) {
 	struct Actions_ID a;
 	// lidars distance
 	int d_l, d_r, d_f; 
-	int train_only_steering = ql_get_train_mode();
+	int train_only_steering;
 
 	i = get_task_index(arg);
 	set_activation(i);
@@ -636,6 +642,7 @@ void* learning_task(void* arg) {
 
 	pthread_mutex_lock(&mux_q_matrix);
 	a = ql_egreedy_policy(s);
+	train_only_steering = ql_get_train_mode();
 	pthread_mutex_unlock(&mux_q_matrix);
 
 	// correct only in single thread. should have mux otherwise
@@ -868,6 +875,19 @@ char interpreter() {
 					disable_sensors = 1;
 				}
 				break;
+			case KEY_T:
+				mode = train_mode;
+				if (mode == ONLY_STEER_TRAINING) {
+					train_mode = STEER_VEL_TRAINING;
+				} else if (mode == STEER_VEL_TRAINING) {
+					train_mode = ONLY_STEER_TRAINING;
+				}else {
+					printf("ERROR: wrong mode! Should be %d or %d\n", ONLY_STEER_TRAINING, STEER_VEL_TRAINING);
+					exit(1);
+				}
+				pthread_mutex_lock(&mux_q_matrix);
+				ql_set_train_mode(train_mode);
+				pthread_mutex_unlock(&mux_q_matrix);
 			default:
 				break;
 		}
@@ -912,11 +932,14 @@ char get_scancode() {
 // initialize agent structure with the initial conditions on track
 void init_agent() {
 	struct Car vehicle;
-	int train_only_steering = ql_get_train_mode();
-	
+
+	//int train_only_steering = ql_get_train_mode();
+	assert( (train_mode == ONLY_STEER_TRAINING) || 
+			(train_mode == STEER_VEL_TRAINING));
+
 	printf("*** Initializing agent\n");
 
-	if (train_only_steering)
+	if (train_mode == ONLY_STEER_TRAINING)
 		printf("Training mode is: only STEERING \n");
 	else
 		printf("Training mode is: STEERING + ACCELERATION \n");
@@ -924,7 +947,7 @@ void init_agent() {
 	vehicle.x = pose_pool[pool_index][0];
 	vehicle.y = pose_pool[pool_index][1];
 	vehicle.theta = pose_pool[pool_index][2];
-	if (train_only_steering)
+	if (train_mode == ONLY_STEER_TRAINING)
 		vehicle.v = MAX_V_ALLOWED;
 	else
 		vehicle.v = TRAIN_VEL;
@@ -1079,17 +1102,17 @@ void show_gui_interaction_instructions() {
 	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 20, white, -1);
 
 	memset(buff, 0, sizeof buff);
-	sprintf(buff,"ARROW UP" );
+	sprintf(buff,"KEY T" );
 	textout_ex(instructions_bmp, font, buff, x, y + 40, yellow, -1);
 	memset(buff, 0, sizeof buff);
-	sprintf(buff,"increase car's max velocity allowed");
-	textout_ex(instructions_bmp, font, buff, x + 115, y + 40, white, -1);
+	sprintf(buff,"switch auto drive between STEER and STEER + VELOCITY");
+	textout_ex(instructions_bmp, font, buff, x + x_offset, y + 40, white, -1);
 
 	memset(buff, 0, sizeof buff);
-	sprintf(buff,"ARROW DOWN" );
+	sprintf(buff,"ARROW UP/DOWN" );
 	textout_ex(instructions_bmp, font, buff, x, y + 60, yellow, -1);
 	memset(buff, 0, sizeof buff);
-	sprintf(buff,"decrease car's max velocity allowed");
+	sprintf(buff,"change car's max velocity allowed");
 	textout_ex(instructions_bmp, font, buff, x + 115, y + 60, white, -1);
 
 	// remove to switch between 2 columns and 1 column
@@ -1286,13 +1309,14 @@ void write_debug() {
 	int index;
 	struct Agent agent;
 	float discount_factor, learning_rate, epsilon;
-	int rl_mode;
+	int rl_mode, ql_train_mode;
 	
 	pthread_mutex_lock(&mux_q_matrix);
 	discount_factor = ql_get_discount_factor();
 	learning_rate = ql_get_learning_rate();
 	epsilon = ql_get_epsilon();
 	rl_mode = ql_get_rl_mode();
+	ql_train_mode = ql_get_train_mode();
 	pthread_mutex_unlock(&mux_q_matrix);
 
 	x = 0;
@@ -1366,20 +1390,29 @@ void write_debug() {
 
 	memset(debug, 0, sizeof debug);
 	if (rl_mode == INFERENCE) {
-		sprintf(debug,"RL mode: inference");
+		sprintf(debug,"RL mode: INFERENCE");
 	}
 	else if (rl_mode == TRAINING) {
-		sprintf(debug,"RL mode: training");
+		sprintf(debug,"RL mode: TRAINING");
 	}
 	textout_ex(debug_bmp, font, debug, x, 160, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"max v allowed: %f m/s", MAX_V_ALLOWED);
+	if (ql_train_mode == ONLY_STEER_TRAINING) {
+		sprintf(debug,"train mode: STEER");
+	}
+	else if (ql_train_mode == STEER_VEL_TRAINING) {
+		sprintf(debug,"train mode: STEER + VELOCITY");
+	}
 	textout_ex(debug_bmp, font, debug, x, 170, white, -1);
 
 	memset(debug, 0, sizeof debug);
-	sprintf(debug,"alive flag: %d", agent.alive);
+	sprintf(debug,"max v allowed: %f m/s", MAX_V_ALLOWED);
 	textout_ex(debug_bmp, font, debug, x, 180, white, -1);
+
+	//memset(debug, 0, sizeof debug);
+	//sprintf(debug,"alive flag: %d", agent.alive);
+	//textout_ex(debug_bmp, font, debug, x, 190, white, -1);
 
 	index = episode - 1;
 	memset(debug, 0, sizeof debug);
@@ -1607,6 +1640,9 @@ void init_qlearn_training_mode() {
 	n_actions_vel = (int)((MAX_A/G * 2)/ACC_STEP) + 1;
 	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
 	
+	assert( (train_mode == ONLY_STEER_TRAINING) || 
+			(train_mode == STEER_VEL_TRAINING));
+
 	pthread_mutex_lock(&mux_q_matrix);
 	ql_init(n_states, n_actions_steer, n_actions_vel);
 	// modify specific params by calling related function
@@ -1615,6 +1651,8 @@ void init_qlearn_training_mode() {
 	ql_set_expl_factor(0.4);
 	ql_set_expl_range(0.4, 0.01);
 	ql_set_expl_decay(0.95);
+	ql_set_rl_mode(TRAINING);
+	ql_set_train_mode(train_mode);
 	pthread_mutex_unlock(&mux_q_matrix);
 	printf("---------\n");
 }
@@ -1629,6 +1667,9 @@ void init_qlearn_inference_mode() {
 	n_actions_vel = (int)((MAX_A/G * 2)/ACC_STEP) + 1;
 	printf("n_states: %d, n_actions steer: %d, n_actions_velocity: %d\n",n_states, n_actions_steer, n_actions_vel);
 	
+	assert( (train_mode == ONLY_STEER_TRAINING) || 
+			(train_mode == STEER_VEL_TRAINING));
+
 	pthread_mutex_lock(&mux_q_matrix);
 	ql_init(n_states, n_actions_steer, n_actions_vel);
 	// modify specific params by calling related function
@@ -1637,6 +1678,8 @@ void init_qlearn_inference_mode() {
 	ql_set_expl_factor(0.000001);
 	ql_set_expl_range(0.00001, 0.0);
 	ql_set_expl_decay(0.99);
+	ql_set_rl_mode(INFERENCE);
+	ql_set_train_mode(train_mode);
 	pthread_mutex_unlock(&mux_q_matrix);
 
 	// use trained Q matrix from file

@@ -179,7 +179,14 @@ int end = 0;
 char debug[LEN];
 float rwd_distance_counter = 0.0;
 float rwd_previous_delta = 0.0;
+// change between single task mode and multi task mode
+// 1 -> single task || 0 -> multi task
 int single_task_learning = 1;
+// change between training with constant velocity and autonomous steering
+// or training with autonomous steering and autonomous velocity
+// 1 -> only steering
+// 0 -> velocity + steering
+int train_mode = ONLY_STEER_TRAINING;
 
 struct Lidar sensors[3];
 int disable_sensors = 0;

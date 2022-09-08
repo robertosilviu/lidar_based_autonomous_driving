@@ -27,6 +27,8 @@
 #define RWD_STEER_DELTA_GAP -2
 
 #define ONLY_STEER_TRAINING 1
+#define STEER_VEL_TRAINING 0
+
 #define INFERENCE 1
 #define TRAINING 0
 
