@@ -8,70 +8,90 @@
 #define PRINTLINE printf("LINE: %d\n", __LINE__)
 #define LEN 65 // length of array of chars
 
-#define GRAPH_H 300
-#define GRAPH_W 500
 //-------------------------------REINFORCEMENT LEARNING-------------------------
-/*
-#define RWD_CRASH -500
-#define RWD_ALIVE 1
-#define RWD_CORRECT_TURN 5
-#define RWD_WRONG_TURN -4
-#define RWD_STRAIGHT 2
-#define RWD_TURN_STRAIGHT -4
-*/
+
+// r. on crash
+#define RWD_CRASH -100 
+// r. for being alive
+#define RWD_ALIVE -1
+// r. for keep the car near the centre of track
+#define RWD_ON_CENTRE 1
+// r. for driving for a certain amount of meters on track
+#define RWD_DISTANCE 5
+// r. for using wrong acceleration based on car velocity
+#define RWD_BAD_ACC -50
+// r. for steering variation
+#define RWD_STEER_DELTA_GAP -2
+// distance threshold for reward based on distance driven on track
+#define DIST_THRESHOLD_RWD 20.0
+// initial car velocity on mode STEER + ACC
+#define TRAIN_VEL 0.0
+
 #define LIDAR_ANGLE_POS 45.0
 #define LIDAR_ANGLE_NEG -45.0
+// number of states to use in Q matrix
 #define MAX_STATES_LIDAR 7
+// resolution to use stering angle quantization 
 #define ACTIONS_STEP 5 // 5 degree resolution
+// max steering angle
+#define MAX_THETA 40
+// max acceleration to use as command in mode STEER + ACC
+#define MAX_A (0.2*G)
+#define MIN_A (-0.2*G)
+#define ACC_STEP 0.1
+// hard upper limit on max velocity
+// user can set velocity=min(MAX_VELOCITY_ALLOWED, MAX_V)
+#define MAX_V 30.0
+// file name where to save episodes statistics
+#define EPISODES_STATS_FILE_NAME "episodes_stats.txt"
+// file name of the Q matrix
+#define Q_MAT_FILE_NAME "q_matrix.txt"
+// file name of the Q_vel matrix
+#define Q_VEL_MAT_FILE_NAME "q_vel_matrix.txt"
+// max number of episodes which 
+// can be used for statistics related to Q-Learning
+#define MAX_EPISODES 50000
 //-------------------------------GRAPHICS---------------------------------------
 #define WIN_X 1024
 #define WIN_Y 1024
-#define BITS_COL 24
+#define BITS_COL 24 // color depth
+// black color
 #define BKG 0
 #define BLACK 0
+// asphalt color
 #define ASPHALT 7303283
 //#define WHITE 15
 
+// height of region for the deadline misses gui
 #define DMISS_H 250
+// dimensions of track gui
 #define SIM_X 800
 #define SIM_Y 800 //800 before
-#define XCEN_SIM (SIM_X/2)
-#define YCEN_SIM (SIM_Y/2)
 #define SCALE 0.16 // 1px = 0.16m
-#define T_SCALE 10.0
+// time scale to increase or decrease simulation velocity
+#define T_SCALE 3.0
 
 #define INIT_CAR_X 570
 #define INIT_CAR_Y 650
 
 #define BTM_X INIT_CAR_X // (x,y) coordinates with origin on bottomo left
 #define BTM_Y SIM_Y-INIT_CAR_Y
-#define MAX_THETA 40
-#define MIN_THETA -40
-#define INIT_THETA 90.0
+
 #define LF 3.0					// car length to front from centre of gravity
 #define LR 2.0					// car length to back from centre of gravity
 #define WD 2.0					// car width
-#define L (LF+LR)
+#define L (LF+LR)				// car length
 #define W_PX (L/SCALE)
 #define H_PX (WD/SCALE)
-#define WHEELBASE 4.0
-#define C_R 0.8 				// friction coefficient
-#define C_A 2.0					// aerodynamic coefficient
-#define G 9.8
-#define MAX_A (0.2*G)
-#define MIN_A (-0.2*G)
-#define ACC_STEP 0.1
+#define G 9.8					// g constant
 
-#define MAX_V 30.0
-#define MIN_V 0.0
-#define MAX_AGENTS 1
-#define CRASH_DIST 3
-#define DIST_THRESHOLD_RWD 20.0
-
-#define TRAIN_VEL 0.0 //5.0
-
+// keeps track of maximul number of initial position of car
+// that can be set on track
 #define POOL_DIM 13
+// used as dimension for array that keeps
+// the values of actions from Q matrix, inside the RL graph gui
 #define BUF_LEN ((MAX_THETA*2)/ACTIONS_STEP)+1
+
 //-------------------------------SENSOR--------------------------------------
 #define SMAX 100 // lidar beam max distance
 #define STEP 1 // lidar resolution(m) = 1px
@@ -81,12 +101,12 @@
 // handles command interpreter
 #define COM_INTERP_ID 1
 #define COM_INTERP_PRIO 40
-#define COM_INTERP_PER 100	// ms
-#define COM_INTERP_DLR 100
+#define COM_INTERP_PER 20	// ms
+#define COM_INTERP_DLR 20
 
 // handles agent state update 
 #define AGENT_ID 2
-#define AGENT_PRIO 15
+#define AGENT_PRIO 10
 #define AGENT_PER 20	// ms
 #define AGENT_DLR 20
 // handles learning process 
@@ -104,18 +124,9 @@
 // handles graphics 
 #define GRAPHICS_ID 0
 #define GRAPHICS_PRIO 5
-#define GRAPHICS_PER 40	// ms
-#define GRAPHICS_DLR 40
+#define GRAPHICS_PER 25	// ms
+#define GRAPHICS_DLR 25
 
-#define EPISODES_STATS_FILE_NAME "episodes_stats.txt"
-#define Q_MAT_FILE_NAME "q_matrix.txt"
-#define Q_VEL_MAT_FILE_NAME "q_vel_matrix.txt"
-#define Tr_MAT_FILE_NAME "t_r_matrix.txt"
-#define KW_MAT_FILE_NAME "kw_matrix.txt"
-
-// max number of episodes which 
-// can be used for statistics related to Q-Learning
-#define MAX_EPISODES 50000
 /*-----------------------------------------------------------------------------*/
 /*								CUSTOM STRUCTURES							   */
 /*-----------------------------------------------------------------------------*/
@@ -125,95 +136,46 @@ struct ViewPoint {
 	int y;
 };
 
+// structure used to simulate a lidar beam
+// (x,y) are pixel coordinates
+// alpha is the inclination angle of the beam
+// d is the measured distance
 struct Lidar {
-	int x;
+	int x;	
 	int y;
 	float alpha;
 	int d;
 };
 
+// (x,y) are coordinates in meters
+// v is the car velocity in m/s
+// theta is the car orientation in (0,2pi) radians 
 struct Car {
 	float x;
 	float y;
 	float v;
-	//float a;
-	//float vx;
-	//float vy;
-	//float delta;						// steering angle
 	float theta;							// heading angle
 };
 
+// structure of the input that the agent 
+// can use to control the car
+// a = acceleration in m/s2
+// delta = steering cmd in rad
 struct Controls {
 	float a;
 	float delta;						// steering angle
 };
 
+// simulate an intelligent agent that drives the car on track
 struct Agent {
-	struct Car car;
-	int alive; // 1 = alive, 0 = dead due to collision with track borders
+	struct Car car; // car to control
+	int alive;	// 1 = alive, 0 = dead due to collision with track borders
 	float distance;	// distance raced on track 
-	struct Controls action; // should save only action id and decode it 
-	int state;
-	struct Actions_ID a_id;
-	float error;
-	struct EpisodeStats ep_stats;
-	// da aggiungere il reward
+	struct Controls action;	// actions performed on last step 
+	int state;	// current state from Q matrix
+	struct Actions_ID a_id;	// action IDs of last step
+	struct EpisodeStats ep_stats; // statistics of current episode
 };
-
-/*-----------------------------------------------------------------------------*/
-/*								GLOBAL VARIABLES							   */
-/*-----------------------------------------------------------------------------*/
-//static const char *TRACK_FILE = "img/track_4.tga";
-static const char *TRACK_FILE = "img/track_4.tga";
-BITMAP *track_bmp = NULL;
-BITMAP *scene_bmp = NULL;
-BITMAP *debug_bmp = NULL;
-BITMAP *deadline_bmp = NULL;
-BITMAP *graph_bmp = NULL;
-BITMAP *instructions_bmp = NULL;
-
-float MAX_V_ALLOWED = 5.0;
-struct Agent rl_agent; // to be removed
-//struct Agent agents[MAX_AGENTS];
-int end = 0;
-char debug[LEN];
-float rwd_distance_counter = 0.0;
-float rwd_previous_delta = 0.0;
-// change between single task mode and multi task mode
-// 1 -> single task || 0 -> multi task
-int single_task_learning = 1;
-// change between training with constant velocity and autonomous steering
-// or training with autonomous steering and autonomous velocity
-// 1 -> only steering
-// 0 -> velocity + steering
-int train_mode = ONLY_STEER_TRAINING;
-
-struct Lidar sensors[3];
-int disable_sensors = 0;
-
-int graph_index = 0; // check if i should delete it
-
-float max_reward = RWD_CRASH;
-float conv_delta = 0.0;
-
-// array which keeps trace of each episode statistics 
-// of first agent 
-struct EpisodeStats statistics[MAX_EPISODES];
-int episode = 1;
-
-float init_x_offset = 0;
-float init_y_offset = 0;
-float pose_pool[POOL_DIM][3]; // different initial poses on track to help agent learn
-int pool_index = 0;
-// temporary
-int restore_Q = 0;
-//---------------------------------------------------------------------------
-// GLOBAL SEMAPHORES
-//---------------------------------------------------------------------------
-pthread_mutex_t			mux_agent, mux_sensors, mux_cbuffer, mux_q_matrix; // define 3 mutex
-
-pthread_mutexattr_t 	matt;			// define mutex attributes
-
 
 /*-----------------------------------------------------------------------------*/
 /*								FUNCTION PROTOTYPES							   */

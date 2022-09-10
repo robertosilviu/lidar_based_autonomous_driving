@@ -34,7 +34,6 @@ int task_create (void* (*task)(void *), int i, int period, int drel, int prio) {
 	// Setting the scheduler
 	pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
 	pthread_attr_setschedpolicy(&attr, SCHED_RR);
-
 	// Thread priority
 	prio_task.sched_priority = param[i].priority;
 	pthread_attr_setschedparam(&attr, &prio_task);

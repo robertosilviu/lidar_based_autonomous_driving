@@ -8,7 +8,6 @@
 static int n_states;
 static int n_actions;
 static int n_actions_vel;
-//static int goal_state;
 
 static float alpha;						// learning rate
 static float gam;						// discount factor
@@ -17,12 +16,13 @@ static float norm_eps = 1.0;			// normal exploration probability
 static float ini_eps;					// initial exploration probability
 static float fin_eps;					// final exploration probability
 static float epsilon;					// actual exploration probability
-// if mode is INFERENCE return always best actions
+
+// keep trace of rl_mode
+// options are TRAINING and INFERENCE
 static int mode = TRAINING;
+// keep trace of train_mode
+// options are ONLY STEER and STEER + ACC
 static int train_only_steering = ONLY_STEER_TRAINING;
-//----------------------------
-//	QL matrixes
-//----------------------------
 
 // Q matrix related to steering
 static float Q[MAX_STATES][MAX_ACTIONS];
@@ -30,6 +30,7 @@ static float Q[MAX_STATES][MAX_ACTIONS];
 // Q matrix related to velocity
 static float Q_vel[MAX_STATES][MAX_ACTIONS];
 
+// random number between two values 
 float frand(float xmin, float xmax) {
 	float range;
 
@@ -40,6 +41,7 @@ float frand(float xmin, float xmax) {
 	return (xmin + range*(float)rand()/RAND_MAX);
 }
 
+// initialize Q matrix 
 void ql_init(int ns, int na, int na_vel) {
 	int s, a;
 	n_states = ns;
@@ -85,32 +87,38 @@ void ql_init(int ns, int na, int na_vel) {
 	}
 }
 
+// update learning rate
 void ql_set_learning_rate(float lr) {
 	alpha = lr;
 	printf("Learning rate: alpha = %f\n", alpha);
 }
 
+// update discount factor
 void ql_set_discount_factor(float df) {
 	gam = df;
 	printf("Discount factor: gamma = %f\n", gam);
 }
 
+// update min and max range of epsilon parameter
 void ql_set_expl_range(float ini_e, float fin_e) {
 	ini_eps = ini_e;
 	fin_eps = fin_e;
 	printf("Eploration probability: ini_eps = %f, fin_eps = %f\n", ini_e, fin_e);
 }
 
+// update epsilon parameter
 void ql_set_expl_factor(float e) {
 	epsilon = e;
 	printf("Exploration factor: epsilon = %f\n", epsilon);
 }
 
+// update decay factor
 void ql_set_expl_decay(float d) {
 	decay = d;
 	printf("Exploration decay: decay = %f\n", decay);
 }
 
+// update Q matrix with value provided as argument
 void ql_set_Q_matrix(int s, int a, float val) {
 
 	if (s >= n_states) {
@@ -126,6 +134,7 @@ void ql_set_Q_matrix(int s, int a, float val) {
 	Q[s][a] = val;
 }
 
+// update Q_vel matrix with value provided as argument
 void ql_set_Q_vel_matrix(int s, int a, float val) {
 
 	if (s >= n_states) {
@@ -141,6 +150,7 @@ void ql_set_Q_vel_matrix(int s, int a, float val) {
 	Q_vel[s][a] = val;
 }
 
+// switch between INFERENCE and TRAINING
 void ql_set_rl_mode(int val) {
 	if ((val != INFERENCE) && (val != TRAINING)) {
 		printf(" INVALID mode for qlearn library -> %d \n", val);
@@ -150,6 +160,7 @@ void ql_set_rl_mode(int val) {
 	mode = val;
 }
 
+// switch between STEER ONLY and STEER + ACC
 void ql_set_train_mode(int val) {
 	if ((val != ONLY_STEER_TRAINING) && (val != STEER_VEL_TRAINING)) {
 		printf(" INVALID train mode for qlearn library -> %d \n", val);
@@ -164,22 +175,27 @@ void ql_set_train_mode(int val) {
 	train_only_steering = val;
 }
 
+// return learning rate
 float ql_get_learning_rate() {
 	return alpha;
 }
 
+// return discount factor
 float ql_get_discount_factor() {
 	return gam;
 }
 
+// return decay factor
 float ql_get_expl_decay() {
 	return decay;
 }
 
+// return epsilon parameter
 float ql_get_epsilon() {
 	return epsilon;
 }
 
+// return Q value in state S and action A provided as argument
 float ql_get_Q(int s, int a) {
 	if (s >= n_states) {
 		printf("ERROR Q matrix: current state index greater than STATES dimension: %d > %d\n", s, n_states);
@@ -194,6 +210,7 @@ float ql_get_Q(int s, int a) {
 	return Q[s][a];
 }
 
+// return Q_vel value in state S and action A provided as argument
 float ql_get_Q_vel(int s, int a) {
 	if (s >= n_states) {
 		printf("ERROR Q_vel matrix: current state index greater than STATES dimension: %d > %d\n", s, n_states);
@@ -208,27 +225,32 @@ float ql_get_Q_vel(int s, int a) {
 	return Q_vel[s][a];
 }
 
+// return the number of states used to initialize the Q matrix
 int ql_get_nstates() {
 	return n_states;
 }
 
+// return the number of actions used to initialize the Q matrix
 int ql_get_nactions() {
 	return n_actions;
 }
 
+// return the number of actions used to initialize the Q_vel matrix
 int ql_get_nactions_vel() {
 	return n_actions_vel;
 }
 
+// return the current rl_mode used by the library
 int ql_get_rl_mode() {
-	//assert((mode == 0) || (mode == 1));
 	return mode;
 }
 
+// return the current train_mode used by the library
 int ql_get_train_mode() {
 	return train_only_steering;
 }
 
+// method used to reduce exploration factor
 void ql_reduce_expl() {
 	norm_eps = decay*norm_eps;
 	epsilon = fin_eps + norm_eps*(ini_eps - fin_eps);
@@ -240,6 +262,8 @@ void ql_reduce_expl() {
 
 }
 
+// return max value from Q matrix in the state provided as argument
+// flag is used to choose between Q matrix and Q_vel matrix
 float ql_maxQ(int s, int flag) {
 	int a;
 	float m;
@@ -275,7 +299,7 @@ float ql_maxQ(int s, int flag) {
 	return m;
 }
 
-// TO-DO: add condition for inference mode
+// return the id of the best actions from Q and Q_vel matrix
 struct Actions_ID ql_best_action(int s) {
 	int a, ba;
 	float m;
@@ -319,6 +343,7 @@ struct Actions_ID ql_best_action(int s) {
 	return ql_act;
 }
 
+// return actions chosen using e-greedy policy
 struct Actions_ID ql_egreedy_policy(int s) {
 	int ra;
 	float x;
@@ -360,6 +385,7 @@ struct Actions_ID ql_egreedy_policy(int s) {
 	return new_actions;
 }
 
+// update Q and Q_vel matrix based on Q-Learning algorithm
 float ql_updateQ(int s, struct Actions_ID a, float r, int snew) {
 	float td_err;	// TD error
 
@@ -370,6 +396,7 @@ float ql_updateQ(int s, struct Actions_ID a, float r, int snew) {
 	return td_err;
 }
 
+// update Q matrix based on Q-Learning algorithm
 float ql_updateQ_steer(int s, int a, float r, int snew) {
 	float q_target;	// target Q value
 	float td_err;	// TD error
@@ -393,6 +420,7 @@ float ql_updateQ_steer(int s, int a, float r, int snew) {
 	return fabs(td_err);
 }
 
+// update Q_vel matrix based on Q-Learning algorithm
 float ql_updateQ_vel(int s, int a, float r, int snew) {
 	float q_target;	// target Q value
 	float td_err;	// TD error

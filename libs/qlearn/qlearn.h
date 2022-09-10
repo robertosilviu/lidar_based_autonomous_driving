@@ -13,30 +13,19 @@
 #define EPSILON0 0.2
 #define ALPHA_REWARD 1.0
 
-#define RWD_CRASH -100
-#define RWD_ALIVE -1
-#define RWD_CORRECT_TURN 2
-#define RWD_WRONG_TURN -4
-#define RWD_STRAIGHT 2
-#define RWD_TURN_STRAIGHT -4
-#define RWD_OFF_CENTRE -1
-#define RWD_ON_CENTRE 1
-#define RWD_DISTANCE 5 //0.1
-#define RWD_BAD_ACC -50
-#define RWD_CORRECT_ACC -1
-#define RWD_STEER_DELTA_GAP -2
-
 #define ONLY_STEER_TRAINING 1
 #define STEER_VEL_TRAINING 0
 
 #define INFERENCE 1
 #define TRAINING 0
 
+// keep trace of action IDs from Q matrix
 struct Actions_ID {
 	int steer_act_id;
 	int vel_act_id;
 };
 
+// keep trace of episode statistics
 struct EpisodeStats {
 	int steps;
 	float total_td_error;
