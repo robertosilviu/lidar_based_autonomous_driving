@@ -41,7 +41,7 @@
 #define ACC_STEP 0.1
 // hard upper limit on max velocity
 // user can set velocity=min(MAX_VELOCITY_ALLOWED, MAX_V)
-#define MAX_V 30.0
+#define MAX_V 15.0
 // file name where to save episodes statistics
 #define EPISODES_STATS_FILE_NAME "episodes_stats.txt"
 // file name of the Q matrix
@@ -69,7 +69,7 @@
 #define SIM_Y 800 //800 before
 #define SCALE 0.16 // 1px = 0.16m
 // time scale to increase or decrease simulation velocity
-#define T_SCALE 3.0
+#define T_SCALE 1.0
 
 #define INIT_CAR_X 570
 #define INIT_CAR_Y 650
@@ -226,7 +226,9 @@ void read_Q_matrix_from_file();
 void save_Q_vel_matrix_to_file();
 void read_Q_vel_matrix_from_file();
 void init_pool_poses();
+
 //-------------------------------- UTILS --------------------------------------
+
 void find_rect_vertices(struct ViewPoint vertices[], int size, struct Car car);
 int check_color_px_in_line(int x1, int y1, int x0, int y0, int color);
 float deg_to_rad(float deg_angle);

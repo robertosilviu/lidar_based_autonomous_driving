@@ -72,7 +72,6 @@ void ql_init(int ns, int na, int na_vel) {
 
 	for(s = 0; s < n_states; s++) {
 		for(a = 0; a < n_actions; a++) {
-			//printf("s: %d, a: %d\n", s, a);
 			// steer
 			Q[s][a] = 0.0;
 		}
@@ -80,8 +79,7 @@ void ql_init(int ns, int na, int na_vel) {
 
 	for(s = 0; s < n_states; s++) {
 		for(a = 0; a < n_actions_vel; a++) {
-			//printf("s: %d, a: %d\n", s, a);
-			// steer
+			// acceleration
 			Q_vel[s][a] = 0.0;
 		}
 	}
@@ -274,7 +272,6 @@ float ql_maxQ(int s, int flag) {
 		for(a = 1; a < n_actions; a++) {
 			if (Q[s][a] > m) {
 				m = Q[s][a];
-				//printf("q: %d\n", Q[s][a]);
 			}
 
 		}
@@ -285,7 +282,6 @@ float ql_maxQ(int s, int flag) {
 		for(a = 1; a < n_actions_vel; a++) {
 			if (Q_vel[s][a] > m) {
 				m = Q_vel[s][a];
-				//printf("q: %d\n", Q_vel[s][a]);
 			}
 
 		}
@@ -403,17 +399,12 @@ float ql_updateQ_steer(int s, int a, float r, int snew) {
 	// flag to discern between steer and velocity q-learn update
 	int flag = 0; 
 	
-	//if (r == RWD_CRASH)
-	//	q_target = r + gam*ql_maxQ(s, flag);
-	//else
-	//	q_target = r + gam*ql_maxQ(snew, flag);
 	q_target = r + gam*ql_maxQ(snew, flag);
 
-	//q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q[s][a];
-	//old_q = Q[s][a];
-	//Q[s][a] = (1 - alpha) * Q[s][a] + alpha * (q_target);
-	Q[s][a] = Q[s][a] + alpha * (q_target - Q[s][a]);
+	// update only if in training mode
+	if (mode == TRAINING)
+		Q[s][a] = Q[s][a] + alpha * (q_target - Q[s][a]);
 	//printf("Q: %f, td_err: %f \n", Q[s][a], td_err);
 
 
@@ -427,17 +418,12 @@ float ql_updateQ_vel(int s, int a, float r, int snew) {
 	// flag to choose max value from Q_vel 
 	int flag = 1;
 	
-	//if (r == RWD_CRASH)
-	//	q_target = r + gam*ql_maxQ(s, flag);
-	//else
-	//	q_target = r + gam*ql_maxQ(snew, flag);
 	q_target = r + gam*ql_maxQ(snew, flag);
 
-	//q_target = r + gam*ql_maxQ(snew);
 	td_err = q_target - Q_vel[s][a];
-	//old_q = Q_vel[s][a];
-	//Q_vel[s][a] = (1 - alpha) * Q_vel[s][a] + alpha * (q_target);
-	Q_vel[s][a] = Q_vel[s][a] + alpha * (q_target - Q_vel[s][a]);
+	// update only if in training mode
+	if (mode == TRAINING)
+		Q_vel[s][a] = Q_vel[s][a] + alpha * (q_target - Q_vel[s][a]);
 	//printf("Q: %f, td_err: %f \n", Q_vel[s][a], td_err);
 
 	return fabs(td_err);
