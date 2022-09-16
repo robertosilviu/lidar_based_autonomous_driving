@@ -1,7 +1,8 @@
 # Documentation
-Simulation of a real time system that learns to drive a car on track, via rudimental lidar beams, using reinforcement learning and pthread library.
+Simulation of a real time system that learns to drive a car on track, via rudimental lidar beams, using reinforcement learning and pthread library. This application has been created for educational purpose only  as a project for an  university exam. 
 <br>
 The main idea behind this project is to simulate a car having a lidar sensor in order to "sense" the track margins, driven by an intelligent agent. The sensor has 3 beams with an angle of 45 degrees between each of them and detects the track margins via pixels color analysis. 
+<br>
 The agent uses a simple implementation of Epsilon-greedy Q-Learning algorithm in order to learn to drive the car on track. There are two learning modes:
 1. only steering: the agent learns the steering input while the velocity is set constant
 2. steering + acceleration: the agent needs to learn both steering and acceleration
@@ -36,6 +37,7 @@ In this mode all the previous tasks are executed as one task which name is *lear
 - scripts: contains a python script used to analyze the learning algorithm
 - **q_matrix.txt**/**q_vel_matrix.txt**: contains examples of trained Q matrix
 - **run.sh**: simple script to execute the application
+- **project_report_italian.pdf**: report in italian language containing more informations about the project.
 
 ## Requirements
 ### Allegro library
